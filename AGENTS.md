@@ -225,16 +225,45 @@ Sparring 是 Claude Code + Cursor Agent 的双 Agent 交叉审查机制：
 
 #### Large（新模块、架构变更、跨多 package）
 ```
-1. 写/更新 Spec（行为契约，GWT 格式）
-2. Sparring review Spec ← 方案阶段就审查
-3. 修复 Spec 中的问题
-4. 从 Spec 拆测试用例 → TDD 实现
-5. typecheck + lint + test
-6. Sparring review 代码（完整 diff）
-7. 修复 MUST-FIX
-8. 提交
+Plan 阶段（整体方案）：
+1. 写 Plan（实施方案、技术选型、任务拆分）
+2. Sparring review Plan
+3. 修复 Plan 中的问题，与用户确认
+
+Spec 阶段（逐个模块的行为契约）：
+4. 从 Plan 拆出 Spec（一个 Plan 可能对应多个 Spec）
+5. 逐个 Sparring review Spec
+6. 修复 Spec 中的问题
+
+实现阶段（逐个 Spec 交付）：
+7. 从 Spec 拆测试用例 → TDD 实现
+8. typecheck + lint + test
+9. Sparring review 代码（完整 diff）
+10. 修复 MUST-FIX
+11. 提交（每个 Spec 独立提交，代码 + 测试）
 ```
 例：新系统（control-plane）、重大重构
+
+**Plan vs Spec 的区别**：
+
+| | Plan | Spec |
+|---|---|---|
+| **粒度** | 整体方案，可能跨多个模块 | 单个模块/功能的行为契约 |
+| **内容** | 技术选型、架构决策、任务拆分、文件清单、实施顺序 | 用户行为→系统响应（GWT）、API 契约、状态转换、边界条件 |
+| **数量** | 一个 feature 通常一个 Plan | 一个 Plan 对应 1~N 个 Spec |
+| **位置** | `.claude/plans/` 或 `.workflow/plans/`（会话内，不入库） | `specs/` 目录（入库，长期维护） |
+| **生命周期** | 实现完成后归档 | 持续更新，是行为的 source of truth |
+
+**典型流程示例**（以 control-plane 为例）：
+```
+Plan: "control-plane 整体实施方案"
+  ├─ Spec 1: specs/control-plane-run-service.md（RunService 接口契约）
+  ├─ Spec 2: specs/control-plane-agent-service.md（AgentService 接口契约）
+  ├─ Spec 3: specs/control-plane-event-store.md（EventStore 接口契约）
+  └─ Spec 4: specs/control-plane-state-machine.md（RunStateMachine 转换规则）
+
+每个 Spec 独立 Sparring → 独立实现 → 独立 commit
+```
 
 #### Bug 修复
 ```

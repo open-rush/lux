@@ -17,7 +17,7 @@
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "clean": "rm -rf dist node_modules coverage drizzle",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "tsup src/index.ts --format esm,cjs --dts && drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio"

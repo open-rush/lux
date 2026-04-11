@@ -14,7 +14,7 @@
     "build": "tsup src/index.ts --format esm,cjs --dts",
     "check": "tsc --noEmit",
     "lint": "biome check .",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "clean": "rm -rf dist node_modules coverage"
   },
   "dependencies": {

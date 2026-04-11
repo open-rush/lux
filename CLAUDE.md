@@ -2,26 +2,41 @@
 
 完整开发指南见 [AGENTS.md](./AGENTS.md)。以下是快速参考。
 
-## 快速命令
+## 铁律
 
-```bash
-pnpm build && pnpm check && pnpm lint && pnpm test   # 提交前门禁
-pnpm dev                                               # 启动开发服务器
-pnpm db:up                                             # 启动 PG + Redis
-pnpm test:integration                                  # 集成测试（需 Docker）
+**所有方案、代码变更、Spec 变更必须经过 Sparring Review（双 Agent 交叉审查），无任何例外。**
+
+## 提交前门禁（5 步）
+
 ```
+1. pnpm build        — 构建通过
+2. pnpm check        — 类型检查通过
+3. pnpm lint         — lint 通过
+4. pnpm test         — 测试通过
+5. Sparring review   — APPROVE 或无 MUST-FIX
+```
+
+## 变更流程
+
+- **Small**：改代码 → check/lint/test → **Sparring** → 提交
+- **Medium**：读 Spec → 代码+测试 → 更新 Spec → **Sparring** → 提交
+- **Large**：写 Spec → **Sparring Spec** → TDD → 代码+测试 → **Sparring 代码** → 提交
+- **Bug**：分析根因 → **Sparring 结论** → Red Test → 修复 → **Sparring 代码** → 提交
+
+每个 commit 必须包含**代码 + 测试**。Spec 在 `specs/` 目录。
 
 ## 架构
 
 三层：`apps/web`（Next.js）→ `apps/control-worker`（pg-boss）→ `apps/agent-worker`（Hono，沙箱内）
 
-## 变更流程
+## 快速命令
 
-- **Small**（无逻辑变更）：改代码 → check/lint/test → 提交
-- **Medium**（有逻辑变更）：读 Spec → 代码+测试 → 更新 Spec → 提交
-- **Large**（新模块/架构）：写 Spec → TDD → 代码+测试 → 提交
-
-每个 commit 必须包含**代码 + 测试**。Spec 在 `specs/` 目录。
+```bash
+pnpm build && pnpm check && pnpm lint && pnpm test   # 门禁 1-4
+pnpm dev                                               # 启动开发服务器
+pnpm db:up                                             # 启动 PG + Redis
+pnpm test:integration                                  # 集成测试（需 Docker）
+```
 
 ## 约定
 

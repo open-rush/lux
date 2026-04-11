@@ -1,30 +1,37 @@
 # Rush
 
-Enterprise AI agent infrastructure — self-hosted, multi-scenario, built for every team member.
+**Enterprise AI agent infrastructure — self-hosted, multi-scenario, built for every team member.**
 
-Deploy once, empower everyone. Developers automate with CLI and API. Non-technical teams build apps, analyze data, and generate content through conversation. All running on sandboxed Claude Code agents in your own infrastructure.
+## Why Rush
 
-## Status
+Every enterprise is figuring out how to put AI agents to work. The options today: lock into a vendor's cloud, stitch together fragile toolchains, or build from scratch.
 
-**Pre-alpha** — actively under development. See [Roadmap](docs/roadmap.md) for the full plan.
+Rush takes a different path. **Deploy once into your own infrastructure, then let everyone — developers and non-developers alike — use AI agents for their daily work.** Developers automate through CLI and API. Product teams build apps through conversation. Data teams analyze through natural language. All running on sandboxed Claude Code agents, with credentials encrypted, permissions enforced, and data never leaving your network.
+
+We believe the future of enterprise software is not "AI features bolted onto existing tools" — it's **AI agents as the primary interface**, with the right infrastructure underneath: sandboxed execution, credential security, plugin extensibility, and observable operations.
+
+Rush is that infrastructure, open-source.
 
 ## Vision
 
 ```
-Entry Points (multi-entry)                    Scenarios (multi-scenario)
-┌─────────────────────┐                       ┌─────────────────────┐
-│ Web UI    — everyone │                       │ Web app building    │
-│ CLI       — devs     │──── Rush Platform ───►│ Code generation     │
-│ API       — systems  │                       │ Data analysis       │
-│ SDK       — embed    │                       │ Workflow automation  │
-└─────────────────────┘                       │ Document generation  │
-                                              │ Multimodal tasks     │
-                                              └─────────────────────┘
+                              Rush
+                    ┌──────────────────────┐
+                    │   AI Agent Platform   │
+Entry Points        │                      │        Scenarios
+                    │  ┌────────────────┐  │
+ Web UI (everyone)──┤  │ Orchestration  │  ├──► Web app building
+ CLI (developers)───┤  │ Sandbox        │  ├──► Code generation
+ API (systems)──────┤  │ Skills & MCP   │  ├──► Data analysis
+ SDK (embedded)─────┤  │ Memory         │  ├──► Workflow automation
+                    │  │ Vault          │  ├──► Document generation
+                    │  │ Observability  │  ├──► Multimodal tasks
+                    │  └────────────────┘  │
+                    └──────────────────────┘
+                         Your infrastructure
 ```
 
-## Current Scope
-
-The initial release (M0–M4) focuses on the **platform layer + web app building + Web UI entry**. CLI, API, SDK, and additional scenarios are planned for subsequent releases.
+**Current scope (M0–M4):** Platform layer + web app building + Web UI. CLI, API, SDK, and more scenarios follow post-GA.
 
 ## Architecture
 
@@ -39,12 +46,12 @@ apps/web (Next.js 16)          — Portal + Control API
   │
   │  pg-boss queue
   ▼
-apps/control-worker             — Orchestration + state machine
+apps/control-worker             — Orchestration + 15-state machine
   │
   │  SandboxProvider interface
   ▼
 Sandbox Container
-  ├── apps/agent-worker (Hono)  — Claude Code agent execution
+  ├── apps/agent-worker (Hono)  — Claude Code execution
   ├── Workspace files
   └── Dev server
 ```
@@ -53,21 +60,21 @@ Sandbox Container
 
 | Capability | Description |
 |-----------|-------------|
-| **Agent orchestration** | Conversation, task dispatch, 15-state machine, checkpoint recovery |
+| **Agent orchestration** | Conversation, task dispatch, state machine, checkpoint recovery |
 | **Sandbox isolation** | Per-task containers, pluggable runtime (OpenSandbox, E2B, Docker...) |
 | **Skills & MCP** | Plugin marketplace + Model Context Protocol servers |
-| **Memory** | Cross-session learning, user preferences, pgvector search |
-| **Vault** | Dual-layer credential management (platform + user), auto-routed injection |
+| **Memory** | Cross-session learning, user preferences, vector search |
+| **Vault** | Dual-layer credentials — platform (admin) + user (self-service), auto-secured injection |
 | **Multi-tenant** | Per-user projects, RBAC, isolated workspaces |
 | **Observability** | OpenTelemetry traces + metrics + LLM cost tracking |
 
-## Key Design Decisions
+## Design Principles
 
-- **Pluggable sandbox** — `SandboxProvider` interface. Bring your own container runtime
-- **Dual-layer Vault** — Platform Vault (admin, invisible) + User Vault (self-service). Credentials auto-routed through Credential Proxy or controlled injection
-- **Claude Code native** — Single agent runtime, three connection modes (Anthropic API / Bedrock / custom endpoint)
-- **Zero vendor lock-in** — Standard OTEL, NextAuth.js, S3-compatible storage, Drizzle ORM
-- **Spec-driven** — Features defined in `specs/` before implementation
+- **Self-hosted first** — your data, your infrastructure, your rules
+- **Pluggable sandbox** — `SandboxProvider` interface, bring your own container runtime
+- **Claude Code native** — three connection modes: Anthropic API / AWS Bedrock / custom endpoint
+- **Security by default** — Credential Proxy for zero-secret containers, dual-layer Vault
+- **Zero vendor lock-in** — standard OTEL, NextAuth.js, S3-compatible storage, Drizzle ORM
 
 ## Tech Stack
 
@@ -77,41 +84,38 @@ Sandbox Container
 | Backend | Hono (agent), pg-boss (queue), Drizzle ORM |
 | AI | Claude Code (Anthropic API / Bedrock / custom endpoint) |
 | Database | PostgreSQL 16 + pgvector |
-| Sandbox | Pluggable — any container runtime via SandboxProvider |
-| Cache | Redis (resumable SSE streams) |
-| Storage | S3-compatible (MinIO local, AWS production) |
-| Auth | NextAuth.js v5 (GitHub OAuth default) |
-| Observability | OpenTelemetry (standard) |
+| Sandbox | Pluggable via SandboxProvider |
+| Cache | Redis (resumable SSE) |
+| Storage | S3-compatible (MinIO / AWS) |
+| Auth | NextAuth.js v5 |
+| Observability | OpenTelemetry |
 
 ## Milestones
 
-| Milestone | Target | Status |
-|-----------|--------|--------|
-| M0: Skeleton | Week 2 | In Progress |
-| M1: Agent Loop | Week 5 | Planned |
-| M2a: MVP Core | Week 9 | Planned |
-| M2b: Experience | Week 11 | Planned |
-| M3: Ecosystem | Week 15 | Planned |
-| M4: GA | Week 18 | Planned |
+| Milestone | Target | Focus |
+|-----------|--------|-------|
+| M0: Skeleton | Week 2 | Infrastructure, sandbox PoC, security baseline |
+| M1: Agent Loop | Week 5 | Claude Code in sandbox, streaming to browser |
+| M2a: MVP Core | Week 9 | Create → chat → code → preview → deploy |
+| M2b: Experience | Week 11 | AI components, Vault, templates |
+| M3: Ecosystem | Week 15 | Skills, MCP, Memory |
+| M4: GA | Week 18 | OTEL, RBAC, E2E, docs, production hardening |
 
-## Development
+See [Roadmap](docs/roadmap.md) for the full plan.
+
+## Getting Started
 
 ```bash
 # Prerequisites: Node.js 22+, pnpm, Docker
 
-# Start local environment
-docker compose up -d
-
-# Install dependencies
+docker compose up -d    # PostgreSQL, Redis, MinIO, sandbox server
 pnpm install
-
-# Run all checks
 pnpm build && pnpm check && pnpm test && pnpm lint
 ```
 
 ## Contributing
 
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) (coming soon).
+We're building this in the open. Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) (coming soon).
 
 ## License
 

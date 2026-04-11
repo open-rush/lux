@@ -9,7 +9,7 @@ Build a fully open-source AI web builder with a clean three-layer architecture.
 - Clean-slate schema design (Drizzle ORM), no legacy migration
 - Three-layer architecture: Web → Control Worker → Agent Worker (sandboxed)
 - Full product capabilities: conversational web building, preview, deployment, Skills/MCP, Memory
-- Test-driven: comprehensive test suite as behavior specifications
+- Test-driven: all tests written from scratch for this project
 - Pluggable sandbox: OpenSandbox default, bring your own
 
 ---
@@ -44,7 +44,7 @@ open-rush/
 ├── docs/                       # Architecture docs
 ├── tests/
 │   ├── e2e/                    # Playwright E2E tests
-│   └── migration-matrix.csv    # Test migration tracking
+│   └── e2e/                    # Playwright E2E tests
 ├── AGENTS.md
 ├── CLAUDE.md
 └── verify.sh
@@ -210,6 +210,35 @@ platform_tokens  hashed, expirable
 
 ---
 
+## Test Strategy
+
+### Principles
+
+1. **All tests are original work** — written from scratch for this project
+2. **Test-first development** — write test (red) → implement (green) → refactor
+3. **Layered coverage** — schemas → business logic → API routes → components → E2E
+4. **Tests as living specification** — each test describes a user-facing behavior, not implementation details
+
+### Test Categories
+
+| Category | Scope | Example |
+|----------|-------|---------|
+| Schema validation | Zod schemas accept/reject | `run status must be one of 15 valid states` |
+| Business logic | State machines, services | `FinalizationStateMachine: uploading → verifying` |
+| API routes | HTTP endpoint behavior | `POST /api/projects returns 201 with project` |
+| Integration | Multi-module with real DB | `create project → start run → checkpoint → recover` |
+| Component | React rendering + interaction | `model-selector displays models, fires onChange` |
+| E2E | Full user flows (Playwright) | `sign in → create → chat → preview → deploy` |
+
+### Convention
+
+- Co-located: `foo.ts` → `foo.test.ts`
+- Integration: `tests/integration/`
+- E2E: `tests/e2e/`
+- Test names describe scenario, not implementation
+
+---
+
 ## Milestones
 
 | Milestone | Week | Tests | Gate |
@@ -228,5 +257,5 @@ platform_tokens  hashed, expirable
 |------|-----------|
 | OpenSandbox PoC fails | SandboxProvider interface; write Docker/E2B adapter |
 | Timeline too aggressive | Phase 2 is hard deadline; 3/4 can slip |
-| Test migration complex | migration-matrix tracks; allow REPLACED/DROPPED |
+| Test coverage ambitious | Incremental targets per milestone; prioritize critical paths |
 | Pause/Resume state loss | Checkpoint mechanism + recovery protocol |

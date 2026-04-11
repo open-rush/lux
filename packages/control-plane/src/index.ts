@@ -6,3 +6,4 @@ export {
   type InsertResult,
 } from './event-store.js';
 export { type ConsumeResult, IdempotentConsumer } from './idempotent-consumer.js';
+export * from './vault/index.js';

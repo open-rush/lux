@@ -17,6 +17,11 @@
       "cache": false,
       "persistent": true
     },
+    "test:integration": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "env": ["DATABASE_URL"]
+    },
     "clean": {
       "cache": false
     }

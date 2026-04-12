@@ -109,6 +109,12 @@ importers:
       '@rive-app/react-webgl2':
         specifier: ^4.28.0
         version: 4.28.0(react@19.2.5)
+      '@rush/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@rush/control-plane':
+        specifier: workspace:*
+        version: link:../../packages/control-plane
       '@rush/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -175,6 +181,9 @@ importers:
       next-themes:
         specifier: ^0.4.6
         version: 0.4.6(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      pg-boss:
+        specifier: ^12.15.0
+        version: 12.15.0
       react:
         specifier: ^19.0.0
         version: 19.2.5
@@ -258,34 +267,6 @@ importers:
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
-      tsup:
-        specifier: ^8.0.0
-        version: 8.5.1(jiti@2.6.1)(postcss@8.5.9)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
-      typescript:
-        specifier: ^5.8.0
-        version: 5.9.3
-      vitest:
-        specifier: ^4.0.0
-        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(msw@2.13.2(@types/node@25.6.0)(typescript@5.9.3))(vite@8.0.8(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
-
-  packages/ai-components:
-    dependencies:
-      react:
-        specifier: '>=18.0.0'
-        version: 19.2.5
-      react-dom:
-        specifier: '>=18.0.0'
-        version: 19.2.5(react@19.2.5)
-    devDependencies:
-      '@types/node':
-        specifier: ^25.6.0
-        version: 25.6.0
-      '@types/react':
-        specifier: ^19.2.14
-        version: 19.2.14
-      '@types/react-dom':
-        specifier: ^19.2.3
-        version: 19.2.3(@types/react@19.2.14)
       tsup:
         specifier: ^8.0.0
         version: 8.5.1(jiti@2.6.1)(postcss@8.5.9)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)

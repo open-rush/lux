@@ -73,6 +73,12 @@ export class RunService {
     return updated;
   }
 
+  async setActiveStreamId(runId: string, streamId: string): Promise<void> {
+    const run = await this.db.findById(runId);
+    if (!run) throw new Error('Run not found');
+    await this.db.updateStatus(runId, run.status as RunStatus, { activeStreamId: streamId });
+  }
+
   async retry(runId: string): Promise<Run> {
     const run = await this.db.findById(runId);
     if (!run) throw new Error('Run not found');

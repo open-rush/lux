@@ -6,6 +6,8 @@ export {
   CheckpointService,
   type CheckpointStorage,
 } from './checkpoint-service.js';
+export { DrizzleRunDb } from './drizzle-run-db.js';
+export { RunOrchestrator, type RunOrchestratorDeps } from './run-orchestrator.js';
 export { type CreateRunInput, type Run, type RunDb, RunService } from './run-service.js';
 export {
   canTransition,

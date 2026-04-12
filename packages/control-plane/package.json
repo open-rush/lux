@@ -19,9 +19,12 @@
   },
   "dependencies": {
     "@rush/contracts": "workspace:*",
-    "@rush/db": "workspace:*"
+    "@rush/db": "workspace:*",
+    "@rush/sandbox": "workspace:*",
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.4.4",
     "@types/node": "^25.6.0",
     "tsup": "^8.0.0",
     "typescript": "^5.8.0",

@@ -1,5 +1,25 @@
+import crypto from 'node:crypto';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
+
+const CHUNK_SIZE = 20;
+const CHUNK_DELAY_MS = 50;
+
+function splitIntoChunks(text: string, size: number): string[] {
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; i += size) {
+    chunks.push(text.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function sseLine(payload: Record<string, unknown>): string {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const app = new Hono();
 
@@ -13,23 +33,62 @@ app.get('/status', (c) => {
 
 app.post('/prompt', async (c) => {
   const body = await c.req.json();
-  const { prompt, sessionId, env } = body;
+  const { prompt, streamId: clientStreamId } = body as {
+    prompt?: string;
+    sessionId?: string;
+    env?: Record<string, string>;
+    streamId?: string;
+  };
 
   if (!prompt) {
     return c.json({ error: 'prompt is required' }, 400);
   }
 
-  // TODO: Execute Claude Code CLI with the prompt
-  // For now, return a placeholder SSE stream
+  const streamId = clientStreamId ?? crypto.randomUUID();
+  const stepId = crypto.randomUUID();
+  const msgId = crypto.randomUUID();
+  const chunks = splitIntoChunks(prompt, CHUNK_SIZE);
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
-    start(controller) {
-      controller.enqueue(
-        encoder.encode(
-          `data: ${JSON.stringify({ type: 'text', content: 'Agent response placeholder' })}\n\n`
-        )
-      );
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
+    async start(controller) {
+      const enqueue = (payload: Record<string, unknown>) => {
+        controller.enqueue(encoder.encode(sseLine(payload)));
+      };
+
+      // Stream start
+      enqueue({ type: 'start', id: streamId });
+      await delay(CHUNK_DELAY_MS);
+
+      // Step start
+      enqueue({ type: 'start-step', id: stepId });
+      await delay(CHUNK_DELAY_MS);
+
+      // Text start
+      enqueue({ type: 'text-start', id: msgId });
+      await delay(CHUNK_DELAY_MS);
+
+      // Echo prefix
+      enqueue({ type: 'text-delta', id: msgId, delta: 'Echo: ' });
+      await delay(CHUNK_DELAY_MS);
+
+      // Prompt chunks
+      for (const chunk of chunks) {
+        enqueue({ type: 'text-delta', id: msgId, delta: chunk });
+        await delay(CHUNK_DELAY_MS);
+      }
+
+      // Text end
+      enqueue({ type: 'text-end', id: msgId });
+      await delay(CHUNK_DELAY_MS);
+
+      // Step finish
+      enqueue({ type: 'finish-step', id: stepId });
+      await delay(CHUNK_DELAY_MS);
+
+      // Stream finish
+      enqueue({ type: 'finish', id: streamId, reason: 'end_turn' });
+
       controller.close();
     },
   });
@@ -38,6 +97,7 @@ app.post('/prompt', async (c) => {
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
     },
   });
 });

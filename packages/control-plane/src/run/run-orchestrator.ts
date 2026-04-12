@@ -45,9 +45,12 @@ export class RunOrchestrator {
 
       const agentBridge = new AgentBridge({ agentWorkerUrl: endpointUrl });
       await this.deps.runService.transition(runId, 'running');
-      const { response } = await agentBridge.sendPrompt(prompt, { sessionId: runId });
+      const { streamId, response } = await agentBridge.sendPrompt(prompt, { sessionId: runId });
 
-      // 4. Consume SSE stream
+      // Set activeStreamId on the Run so SSE② can correlate
+      await this.deps.runService.setActiveStreamId(runId, streamId);
+
+      // 4. Consume SSE① stream and persist events to DB
       await this.consumeStream(runId, response);
 
       // 5. Simplified finalization (MVP)

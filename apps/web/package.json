@@ -13,8 +13,10 @@
     "clean": "rm -rf .next node_modules coverage"
   },
   "dependencies": {
-    "@auth/core": "^0.34.3",
+    "@auth/core": "0.41.0",
+    "@rush/db": "workspace:*",
     "@tailwindcss/vite": "^4.2.2",
+    "drizzle-orm": "^0.45.2",
     "next": "^16.0.0",
     "next-auth": "5.0.0-beta.30",
     "react": "^19.0.0",

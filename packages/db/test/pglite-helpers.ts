@@ -6,6 +6,7 @@ import * as schema from '../src/schema/index.js';
 export type TestDb = ReturnType<typeof drizzle<typeof schema>>;
 
 const TABLE_NAMES = [
+  'versions',
   'vault_entries',
   'conversations',
   'artifacts',
@@ -254,6 +255,25 @@ async function applySchema(db: TestDb): Promise<void> {
   await db.execute(sql`
     CREATE UNIQUE INDEX IF NOT EXISTS vault_entries_platform_name_uniq
     ON vault_entries (scope, name) WHERE project_id IS NULL
+  `);
+
+  // Versions
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS versions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      version INTEGER NOT NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'building',
+      title TEXT,
+      artifact_path TEXT,
+      artifact_size INTEGER,
+      build_log TEXT,
+      metadata JSONB,
+      created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      published_at TIMESTAMPTZ,
+      UNIQUE(project_id, version)
+    )
   `);
 }
 

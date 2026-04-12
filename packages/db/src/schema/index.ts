@@ -12,3 +12,4 @@ export { sessions } from './sessions.js';
 export { users } from './users.js';
 export { vaultEntries } from './vault-entries.js';
 export { verificationTokens } from './verification-tokens.js';
+export { versions } from './versions.js';

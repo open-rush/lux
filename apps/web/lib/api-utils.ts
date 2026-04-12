@@ -1,5 +1,6 @@
-import { getDbClient, projectMembers, projects } from '@rush/db';
-import { and, eq } from 'drizzle-orm';
+import { DbMembershipStore, DrizzleMembershipDb } from '@rush/control-plane';
+import { getDbClient, projects } from '@rush/db';
+import { eq } from 'drizzle-orm';
 
 import { auth } from '@/auth';
 
@@ -19,29 +20,55 @@ export async function requireAuth(): Promise<string> {
 }
 
 /**
- * Verify user has access to a project (is creator or member).
- * Returns true if user has access, false otherwise.
+ * Verify user has access to a project.
+ * Checks: project_members first, then createdBy as fallback (for legacy projects without membership rows).
  */
 export async function verifyProjectAccess(projectId: string, userId: string): Promise<boolean> {
   const db = getDbClient();
 
-  // Check if user is project creator
+  // Check project exists and is not soft-deleted
   const [project] = await db
-    .select({ id: projects.id })
+    .select({ createdBy: projects.createdBy, deletedAt: projects.deletedAt })
     .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.createdBy, userId)))
+    .where(eq(projects.id, projectId))
     .limit(1);
+  if (!project || project.deletedAt) return false;
 
-  if (project) return true;
+  // Check membership
+  const membershipDb = new DrizzleMembershipDb(db);
+  const store = new DbMembershipStore(membershipDb);
+  const membership = await store.getMembership(userId, projectId);
+  if (membership) return true;
 
-  // Check if user is a project member
-  const [membership] = await db
-    .select({ id: projectMembers.id })
-    .from(projectMembers)
-    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
+  // Fallback: creator access for projects without membership rows
+  return project.createdBy === userId;
+}
+
+/**
+ * Get the user's role in a project, or null if not a member.
+ * Falls back to 'owner' if user is project creator without membership row.
+ */
+export async function getProjectRole(projectId: string, userId: string): Promise<string | null> {
+  const db = getDbClient();
+
+  // Check project exists and is not soft-deleted
+  const [project] = await db
+    .select({ createdBy: projects.createdBy, deletedAt: projects.deletedAt })
+    .from(projects)
+    .where(eq(projects.id, projectId))
     .limit(1);
+  if (!project || project.deletedAt) return null;
 
-  return !!membership;
+  // Check membership
+  const membershipDb = new DrizzleMembershipDb(db);
+  const store = new DbMembershipStore(membershipDb);
+  const membership = await store.getMembership(userId, projectId);
+  if (membership) return membership.role;
+
+  // Fallback: creator is implicitly owner
+  if (project.createdBy === userId) return 'owner';
+
+  return null;
 }
 
 /**

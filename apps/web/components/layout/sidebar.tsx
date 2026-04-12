@@ -1,10 +1,13 @@
 'use client';
 
-import { LogOut, Monitor, Moon, Plus, Sun } from 'lucide-react';
+import { FolderOpen, Home, LogOut, Monitor, Moon, Plus, Sun } from 'lucide-react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useTheme } from '@/components/theme-provider';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 
 interface SidebarUser {
   name?: string | null;
@@ -12,12 +15,19 @@ interface SidebarUser {
   image?: string | null;
 }
 
-interface SidebarProps {
-  user: SidebarUser;
+interface ProjectItem {
+  id: string;
+  name: string;
 }
 
-export function Sidebar({ user }: SidebarProps) {
+interface SidebarProps {
+  user: SidebarUser;
+  projects?: ProjectItem[];
+}
+
+export function Sidebar({ user, projects = [] }: SidebarProps) {
   const { theme, setTheme } = useTheme();
+  const pathname = usePathname();
 
   const cycleTheme = () => {
     const next = theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light';
@@ -33,17 +43,53 @@ export function Sidebar({ user }: SidebarProps) {
         <span className="text-lg font-semibold tracking-tight">Rush</span>
       </div>
 
-      {/* New Chat */}
-      <Button variant="outline" className="w-full justify-start gap-2" size="sm">
-        <Plus className="h-4 w-4" />
-        New Chat
-      </Button>
+      {/* Navigation */}
+      <Link
+        href="/dashboard"
+        className={cn(
+          'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm',
+          pathname === '/dashboard' ? 'bg-accent font-medium' : 'hover:bg-accent/50'
+        )}
+      >
+        <Home className="h-4 w-4" />
+        Dashboard
+      </Link>
+
+      <Link href="/dashboard">
+        <Button variant="outline" className="w-full justify-start gap-2" size="sm">
+          <Plus className="h-4 w-4" />
+          New Chat
+        </Button>
+      </Link>
 
       <Separator />
 
-      {/* Conversations placeholder */}
-      <div className="flex-1 overflow-auto custom-scrollbar px-2">
-        <p className="text-xs text-muted-foreground mt-2">No conversations yet.</p>
+      {/* Projects */}
+      <div className="flex items-center justify-between px-2">
+        <span className="text-xs font-medium text-muted-foreground uppercase">Projects</span>
+      </div>
+      <div className="flex-1 overflow-auto custom-scrollbar">
+        {projects.length === 0 ? (
+          <p className="text-xs text-muted-foreground px-2 mt-1">No projects yet.</p>
+        ) : (
+          <div className="space-y-0.5">
+            {projects.map((project) => (
+              <Link
+                key={project.id}
+                href={`/projects/${project.id}`}
+                className={cn(
+                  'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm',
+                  pathname.startsWith(`/projects/${project.id}`)
+                    ? 'bg-accent font-medium'
+                    : 'hover:bg-accent/50'
+                )}
+              >
+                <FolderOpen className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{project.name}</span>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
       <Separator />

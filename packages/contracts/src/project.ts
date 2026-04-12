@@ -22,3 +22,32 @@ export const ProjectMember = z.object({
   createdAt: z.coerce.date(),
 });
 export type ProjectMember = z.infer<typeof ProjectMember>;
+
+export const CreateProjectRequest = z.object({
+  name: z.string().min(1).max(255),
+  description: z.string().optional(),
+  sandboxProvider: z.string().optional(),
+  defaultModel: z.string().optional(),
+  defaultConnectionMode: ConnectionMode.optional(),
+});
+export type CreateProjectRequest = z.infer<typeof CreateProjectRequest>;
+
+export const UpdateProjectRequest = z.object({
+  name: z.string().min(1).max(255).optional(),
+  description: z.string().optional(),
+  sandboxProvider: z.string().optional(),
+  defaultModel: z.string().optional(),
+  defaultConnectionMode: ConnectionMode.optional(),
+});
+export type UpdateProjectRequest = z.infer<typeof UpdateProjectRequest>;
+
+export const AddMemberRequest = z.object({
+  userId: z.string().uuid(),
+  role: ProjectMemberRole.default('member'),
+});
+export type AddMemberRequest = z.infer<typeof AddMemberRequest>;
+
+export const UpdateMemberRoleRequest = z.object({
+  role: ProjectMemberRole,
+});
+export type UpdateMemberRoleRequest = z.infer<typeof UpdateMemberRoleRequest>;

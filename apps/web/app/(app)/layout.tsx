@@ -1,3 +1,5 @@
+import { DrizzleProjectDb, ProjectService } from '@rush/control-plane';
+import { getDbClient } from '@rush/db';
 import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import { AppShell } from '@/components/layout/app-shell';
@@ -7,10 +9,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session?.user) redirect('/login');
 
   const user = {
+    id: session.user.id,
     name: session.user.name,
     email: session.user.email,
     image: session.user.image,
   };
 
-  return <AppShell user={user}>{children}</AppShell>;
+  const db = getDbClient();
+  const projectService = new ProjectService(new DrizzleProjectDb(db));
+  const projects = session.user.id ? await projectService.listByUser(session.user.id) : [];
+
+  return (
+    <AppShell user={user} projects={projects.map((p) => ({ id: p.id, name: p.name }))}>
+      {children}
+    </AppShell>
+  );
 }

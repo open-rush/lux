@@ -77,7 +77,7 @@ export async function POST(request: Request) {
 
   // Enqueue pg-boss job
   const queue = await getQueue();
-  await queue.send('run:execute', {
+  await queue.send('run/execute', {
     runId: run.id,
     prompt,
     agentId,

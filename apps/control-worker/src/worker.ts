@@ -25,15 +25,21 @@ async function main() {
   });
 
   await boss.start();
+
+  // pg-boss 12.x requires explicit queue creation
+  await boss.createQueue('run/execute');
+  await boss.createQueue('run/finalize');
+  await boss.createQueue('run/recover');
+
   console.log('Control worker started');
 
   await boss.work<{ runId: string; prompt: string; agentId: string }>(
-    'run:execute',
+    'run/execute',
     async ([job]) => {
       if (!job) return;
       const { runId, agentId } = job.data;
       if (!runId || !agentId) {
-        console.error('run:execute job missing runId or agentId', job.data);
+        console.error('run/execute job missing runId or agentId', job.data);
         return;
       }
 
@@ -42,28 +48,28 @@ async function main() {
       if (!prompt) {
         const run = await runService.getById(runId);
         if (!run) {
-          console.error(`run:execute — run ${runId} not found in DB`);
+          console.error(`run/execute — run ${runId} not found in DB`);
           return;
         }
         prompt = run.prompt;
       }
 
-      console.log(`Processing run:execute — runId=${runId}, agentId=${agentId}`);
+      console.log(`Processing run/execute — runId=${runId}, agentId=${agentId}`);
       await orchestrator.execute(runId, prompt, agentId);
-      console.log(`Completed run:execute — runId=${runId}`);
+      console.log(`Completed run/execute — runId=${runId}`);
     }
   );
 
-  await boss.work<{ runId: string }>('run:finalize', async ([job]) => {
+  await boss.work<{ runId: string }>('run/finalize', async ([job]) => {
     if (!job) return;
     const { runId } = job.data;
-    console.log(`Processing run:finalize — runId=${runId} (handled by orchestrator)`);
+    console.log(`Processing run/finalize — runId=${runId} (handled by orchestrator)`);
     // Finalization is done inline by RunOrchestrator for MVP
   });
 
   // Recovery: check for stuck runs every 2 minutes
-  await boss.schedule('run:recover', '*/2 * * * *');
-  await boss.work('run:recover', async () => {
+  await boss.schedule('run/recover', '*/2 * * * *');
+  await boss.work('run/recover', async () => {
     console.log('Checking for stuck runs...');
     const recovered = await runService.recoverStuckRuns();
     if (recovered.length > 0) {

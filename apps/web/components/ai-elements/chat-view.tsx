@@ -1,7 +1,7 @@
 'use client';
 
 import { useChat } from '@ai-sdk/react';
-import { TextStreamChatTransport } from 'ai';
+import { DefaultChatTransport } from 'ai';
 import { useCallback, useMemo, useState } from 'react';
 import {
   Conversation,
@@ -14,7 +14,7 @@ import { PartRenderer } from './part-renderer';
 import { PromptInput } from './chat-input';
 
 export function ChatView() {
-  const transport = useMemo(() => new TextStreamChatTransport({ api: '/api/chat' }), []);
+  const transport = useMemo(() => new DefaultChatTransport({ api: '/api/chat' }), []);
 
   const { messages, sendMessage, status, stop, error, clearError } = useChat({
     transport,

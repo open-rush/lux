@@ -1,7 +1,7 @@
 'use client';
 
 import { useChat } from '@ai-sdk/react';
-import { TextStreamChatTransport } from 'ai';
+import { DefaultChatTransport, type UIMessage } from 'ai';
 import {
   ArrowUp,
   ChevronLeft,
@@ -21,33 +21,100 @@ import { Conversation, ConversationContent } from '@/components/ai-elements/conv
 import { Message, MessageContent } from '@/components/ai-elements/message';
 import { PartRenderer } from '@/components/ai-elements/part-renderer';
 import { LoadingDots } from '@/components/ui/loading-dots';
+import { useChatAutoSave } from '@/hooks/use-chat-auto-save';
+import { useStreamHeartbeat } from '@/hooks/use-stream-heartbeat';
+import { useStreamRecovery } from '@/hooks/use-stream-recovery';
+import { useStreamStop } from '@/hooks/use-stream-stop';
+import { cn } from '@/lib/utils';
 
 type PreviewTab = 'preview' | 'code' | 'files';
 
 export default function ChatPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
-  const transport = useMemo(() => new TextStreamChatTransport({ api: '/api/chat' }), []);
-  const { messages, sendMessage, status, stop, error, clearError } = useChat({ transport });
 
-  const [input, setInput] = useState('');
-  const [activeTab, setActiveTab] = useState<PreviewTab>('preview');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const didSendInitialPromptRef = useRef(false);
-
-  const isLoading = status === 'submitted' || status === 'streaming';
+  const projectId = searchParams.get('projectId') ?? undefined;
+  const conversationId = params.id;
   const agentName = searchParams.get('agent') || 'Builder';
   const initialPrompt = searchParams.get('prompt')?.trim() ?? '';
 
-  useEffect(() => {
-    if (params.id !== 'new') return;
-    if (!initialPrompt) return;
-    if (messages.length > 0 || isLoading || didSendInitialPromptRef.current) return;
+  // ---------------------------------------------------------------------------
+  // Transport & useChat
+  // ---------------------------------------------------------------------------
+  const transport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: '/api/chat',
+        body: { projectId, conversationId },
+      }),
+    [projectId, conversationId]
+  );
 
-    didSendInitialPromptRef.current = true;
-    clearError();
+  const { messages, setMessages, sendMessage, status, stop, error, clearError, resumeStream } =
+    useChat({
+      id: `chat-${conversationId}`,
+      transport,
+    });
+
+  const isLoading = status === 'submitted' || status === 'streaming';
+
+  // ---------------------------------------------------------------------------
+  // Stream reliability
+  // ---------------------------------------------------------------------------
+  const { isDisconnect, resetDisconnect } = useStreamRecovery();
+  const streamStop = useStreamStop(status);
+
+  const resumeStreamWithReset = useCallback(() => {
+    resetDisconnect();
+    resumeStream?.();
+  }, [resetDisconnect, resumeStream]);
+
+  useStreamHeartbeat(projectId, status, isDisconnect, resumeStreamWithReset, {
+    enabled: messages.length > 0,
+    interval: 1500,
+    maxRetries: 5,
+  });
+
+  // ---------------------------------------------------------------------------
+  // Load history messages
+  // ---------------------------------------------------------------------------
+  const loadedConvRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!conversationId || conversationId === loadedConvRef.current) return;
+    loadedConvRef.current = conversationId;
+
+    fetch(`/api/chat/${conversationId}/messages`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+          setMessages(res.data as UIMessage[]);
+        }
+      })
+      .catch(() => {});
+  }, [conversationId, setMessages]);
+
+  // ---------------------------------------------------------------------------
+  // Auto-save
+  // ---------------------------------------------------------------------------
+  useChatAutoSave({ conversationId, messages, status, model: 'glm-4.7' });
+
+  // ---------------------------------------------------------------------------
+  // Send initial prompt from Home page
+  // ---------------------------------------------------------------------------
+  const didSendInitialRef = useRef(false);
+  useEffect(() => {
+    if (!initialPrompt || status !== 'ready') return;
+    if (didSendInitialRef.current || messages.length > 0) return;
+    didSendInitialRef.current = true;
     sendMessage({ text: initialPrompt });
-  }, [params.id, initialPrompt, messages.length, isLoading, sendMessage, clearError]);
+  }, [initialPrompt, sendMessage, status, messages.length]);
+
+  // ---------------------------------------------------------------------------
+  // Local state
+  // ---------------------------------------------------------------------------
+  const [input, setInput] = useState('');
+  const [activeTab, setActiveTab] = useState<PreviewTab | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = useCallback(() => {
     const text = input.trim();
@@ -55,9 +122,7 @@ export default function ChatPage() {
     setInput('');
     clearError();
     sendMessage({ text });
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
   }, [input, isLoading, sendMessage, clearError]);
 
   const handleKeyDown = useCallback(
@@ -77,6 +142,9 @@ export default function ChatPage() {
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, []);
 
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
   return (
     <div className="flex flex-col h-full">
       {/* Top bar */}
@@ -89,7 +157,6 @@ export default function ChatPage() {
             <div className="text-[14px] font-semibold leading-none">{agentName}</div>
             <div className="text-[11px] text-muted-foreground mt-0.5">GLM · open-rush</div>
           </div>
-          {/* Run status */}
           {isLoading && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950 text-[11px] font-medium text-blue-600 dark:text-blue-400 ml-2">
               <div className="size-1.5 rounded-full bg-blue-600 dark:bg-blue-400 animate-pulse" />
@@ -98,13 +165,12 @@ export default function ChatPage() {
           )}
         </div>
         <div className="flex items-center gap-1.5">
-          {/* Preview tab switcher */}
           <div className="flex items-center bg-muted rounded-lg p-[2px] mr-2">
             {(['preview', 'code', 'files'] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
-                onClick={() => setActiveTab(tab)}
+                onClick={() => setActiveTab((prev) => (prev === tab ? null : tab))}
                 className={cn(
                   'h-6 px-2.5 rounded-md text-[11px] font-medium cursor-pointer transition',
                   activeTab === tab
@@ -133,11 +199,10 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Body: Chat (left) | Preview (right) */}
+      {/* Body */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* LEFT: Chat Panel */}
-        <div className="flex flex-col w-[42%] min-w-[380px]">
-          {/* Messages */}
+        {/* Chat Panel */}
+        <div className={cn('flex flex-col min-w-[380px]', activeTab ? 'w-[42%]' : 'flex-1')}>
           <div className="flex-1 overflow-y-auto px-5 py-5">
             {error && (
               <div className="mx-auto max-w-2xl mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
@@ -147,7 +212,7 @@ export default function ChatPage() {
 
             <Conversation className="max-w-2xl mx-auto">
               <ConversationContent>
-                {messages.length === 0 && (
+                {messages.length === 0 && !isLoading && (
                   <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
                     <p className="text-sm">Send a message to start building.</p>
                   </div>
@@ -167,7 +232,6 @@ export default function ChatPage() {
                           isLastMessage={messageIndex === messages.length - 1}
                         />
                       ))}
-
                       {isLoading &&
                         messageIndex === messages.length - 1 &&
                         message.role === 'user' && (
@@ -205,7 +269,7 @@ export default function ChatPage() {
                 {isLoading ? (
                   <button
                     type="button"
-                    onClick={stop}
+                    onClick={() => streamStop(projectId, messages.length, stop)}
                     className="size-8 rounded-lg bg-destructive/10 text-destructive flex items-center justify-center hover:bg-destructive/20 transition cursor-pointer shrink-0"
                   >
                     <Square className="size-[18px]" />
@@ -228,97 +292,90 @@ export default function ChatPage() {
                   send
                 </span>
                 <span className="text-[10px] font-mono text-muted-foreground">
-                  3 skills · 2 MCPs
+                  GLM · Claude Code
                 </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* DRAG HANDLE */}
-        <div
-          className="w-[3px] shrink-0 relative cursor-col-resize group flex items-center justify-center hover:bg-primary/10 transition-colors"
-          title="Drag to resize"
-        >
-          <div className="w-1 h-8 rounded-full bg-border group-hover:bg-muted-foreground transition-colors" />
-        </div>
-
-        {/* RIGHT: Preview Panel */}
-        <div className="flex-1 flex flex-col min-w-0 bg-muted/30">
-          {activeTab === 'preview' && (
-            <div className="flex-1 flex flex-col min-h-0">
-              {/* URL bar */}
-              <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
-                <button
-                  type="button"
-                  className="size-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition cursor-pointer"
-                >
-                  <ChevronLeft className="size-3.5" />
-                </button>
-                <button
-                  type="button"
-                  className="size-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition cursor-pointer"
-                >
-                  <ChevronRight className="size-3.5" />
-                </button>
-                <button
-                  type="button"
-                  className="size-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition cursor-pointer"
-                >
-                  <RefreshCw className="size-3.5" />
-                </button>
-                <div className="flex-1 flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-1.5">
-                  <Lock className="size-3 text-muted-foreground shrink-0" />
-                  <span className="text-[12px] font-mono text-muted-foreground truncate">
-                    https://sandbox-abc123.openrush.dev
-                  </span>
-                </div>
-              </div>
-
-              {/* Placeholder preview */}
-              <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-                <div className="text-center">
-                  <div className="size-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3">
-                    <ExternalLink className="size-6" />
+        {/* Preview Panel (collapsed by default) */}
+        {activeTab && (
+          <>
+            <div
+              className="w-[3px] shrink-0 relative cursor-col-resize group flex items-center justify-center hover:bg-primary/10 transition-colors"
+              title="Drag to resize"
+            >
+              <div className="w-1 h-8 rounded-full bg-border group-hover:bg-muted-foreground transition-colors" />
+            </div>
+            <div className="flex-1 flex flex-col min-w-0 bg-muted/30">
+              {activeTab === 'preview' && (
+                <div className="flex-1 flex flex-col min-h-0">
+                  <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
+                    <button
+                      type="button"
+                      className="size-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition cursor-pointer"
+                    >
+                      <ChevronLeft className="size-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      className="size-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition cursor-pointer"
+                    >
+                      <ChevronRight className="size-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      className="size-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition cursor-pointer"
+                    >
+                      <RefreshCw className="size-3.5" />
+                    </button>
+                    <div className="flex-1 flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-1.5">
+                      <Lock className="size-3 text-muted-foreground shrink-0" />
+                      <span className="text-[12px] font-mono text-muted-foreground truncate">
+                        https://sandbox-abc123.openrush.dev
+                      </span>
+                    </div>
                   </div>
-                  <p className="font-medium">Preview</p>
-                  <p className="text-[12px] text-muted-foreground mt-1">
-                    The sandbox preview will appear here when a run is active.
-                  </p>
+                  <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+                    <div className="text-center">
+                      <div className="size-16 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3">
+                        <ExternalLink className="size-6" />
+                      </div>
+                      <p className="font-medium">Preview</p>
+                      <p className="text-[12px] text-muted-foreground mt-1">
+                        The sandbox preview will appear here when a run is active.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
+              {activeTab === 'code' && (
+                <div className="flex-1 flex flex-col min-h-0">
+                  <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
+                    <Code className="size-4 text-muted-foreground" />
+                    <span className="text-[12px] font-mono text-muted-foreground">Code view</span>
+                  </div>
+                  <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+                    Code changes will appear here during agent execution.
+                  </div>
+                </div>
+              )}
+              {activeTab === 'files' && (
+                <div className="flex-1 flex flex-col min-h-0">
+                  <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
+                    <FileText className="size-4 text-muted-foreground" />
+                    <span className="text-[12px] font-medium text-foreground">Workspace Files</span>
+                  </div>
+                  <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+                    Modified files will appear here during agent execution.
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-
-          {activeTab === 'code' && (
-            <div className="flex-1 flex flex-col min-h-0">
-              <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
-                <Code className="size-4 text-muted-foreground" />
-                <span className="text-[12px] font-mono text-muted-foreground">Code view</span>
-              </div>
-              <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-                Code changes will appear here during agent execution.
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'files' && (
-            <div className="flex-1 flex flex-col min-h-0">
-              <div className="flex items-center gap-2 px-4 py-2 border-b border-border shrink-0">
-                <FileText className="size-4 text-muted-foreground" />
-                <span className="text-[12px] font-medium text-foreground">Workspace Files</span>
-              </div>
-              <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-                Modified files will appear here during agent execution.
-              </div>
-            </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </div>
   );
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(' ');
 }

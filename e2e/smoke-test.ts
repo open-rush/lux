@@ -149,7 +149,7 @@ function startAgentWorker(): ChildProcess {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<number> {
-  console.log('\n=== Rush E2E Smoke Test ===\n');
+  console.log('\n=== OpenRush E2E Smoke Test ===\n');
 
   // Track IDs for cleanup
   let userId: string | undefined;

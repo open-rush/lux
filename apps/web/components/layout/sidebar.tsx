@@ -40,7 +40,7 @@ export function Sidebar({ user, projects = [] }: SidebarProps) {
     <aside className="flex flex-col h-full w-[240px] bg-secondary rounded-xl p-3 gap-2">
       {/* Brand */}
       <div className="flex items-center gap-2 px-2 py-1">
-        <span className="text-lg font-semibold tracking-tight">Rush</span>
+        <span className="text-lg font-semibold tracking-tight">OpenRush</span>
       </div>
 
       {/* Navigation */}

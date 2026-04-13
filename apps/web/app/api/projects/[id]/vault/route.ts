@@ -1,7 +1,13 @@
-import { DrizzleVaultDb, VaultService, createCryptoService } from '@lux/control-plane';
+import { createCryptoService, DrizzleVaultDb, VaultService } from '@lux/control-plane';
 import { getDbClient } from '@lux/db';
 
-import { apiError, apiSuccess, getProjectRole, requireAuth, verifyProjectAccess } from '@/lib/api-utils';
+import {
+  apiError,
+  apiSuccess,
+  getProjectRole,
+  requireAuth,
+  verifyProjectAccess,
+} from '@/lib/api-utils';
 
 function getVaultService() {
   const masterKey = process.env.VAULT_MASTER_KEY;

@@ -49,7 +49,10 @@ beforeAll(async () => {
     )
   `);
 
-  const [user] = await db.insert(users).values({ name: 'test', email: 'skill@test.com' }).returning();
+  const [user] = await db
+    .insert(users)
+    .values({ name: 'test', email: 'skill@test.com' })
+    .returning();
   const [project] = await db
     .insert(projects)
     .values({ name: 'Skill Test', createdBy: user.id })
@@ -135,8 +138,18 @@ describe('DrizzleSkillStore', () => {
   });
 
   it('getProjectSkills returns sorted by name', async () => {
-    await store.addSkill(projectId, { name: 'z-skill', source: 'z', visibility: 'public', enabled: true });
-    await store.addSkill(projectId, { name: 'a-skill', source: 'a', visibility: 'public', enabled: true });
+    await store.addSkill(projectId, {
+      name: 'z-skill',
+      source: 'z',
+      visibility: 'public',
+      enabled: true,
+    });
+    await store.addSkill(projectId, {
+      name: 'a-skill',
+      source: 'a',
+      visibility: 'public',
+      enabled: true,
+    });
 
     const skills = await store.getProjectSkills(projectId);
     expect(skills.map((s) => s.name)).toEqual(['a-skill', 'z-skill']);

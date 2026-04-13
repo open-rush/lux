@@ -81,7 +81,9 @@ describe('DrizzleMcpStore', () => {
   });
 
   it('removeServer returns false for missing', async () => {
-    expect(await store.removeServer('project', projectId, '99999999-9999-9999-9999-999999999999')).toBe(false);
+    expect(
+      await store.removeServer('project', projectId, '99999999-9999-9999-9999-999999999999')
+    ).toBe(false);
   });
 
   it('updateServer updates partial fields', async () => {
@@ -95,7 +97,9 @@ describe('DrizzleMcpStore', () => {
       scope: 'project',
     });
 
-    expect(await store.updateServer('project', projectId, id, { enabled: false, command: 'new-cmd' })).toBe(true);
+    expect(
+      await store.updateServer('project', projectId, id, { enabled: false, command: 'new-cmd' })
+    ).toBe(true);
 
     const [server] = await store.getServers('project', projectId);
     expect(server.enabled).toBe(false);

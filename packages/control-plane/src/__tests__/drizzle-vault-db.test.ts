@@ -67,7 +67,10 @@ beforeAll(async () => {
     ON vault_entries (scope, name) WHERE project_id IS NULL
   `);
 
-  const [user] = await db.insert(users).values({ name: 'test', email: 'vault@test.com' }).returning();
+  const [user] = await db
+    .insert(users)
+    .values({ name: 'test', email: 'vault@test.com' })
+    .returning();
   const [project] = await db
     .insert(projects)
     .values({ name: 'Vault Test', createdBy: user.id })

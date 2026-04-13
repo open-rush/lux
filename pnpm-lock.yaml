@@ -112,6 +112,15 @@ importers:
       '@lux/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@lux/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
+      '@lux/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+      '@lux/skills':
+        specifier: workspace:*
+        version: link:../../packages/skills
       '@radix-ui/react-use-controllable-state':
         specifier: ^1.2.2
         version: 1.2.2(@types/react@19.2.14)(react@19.2.5)

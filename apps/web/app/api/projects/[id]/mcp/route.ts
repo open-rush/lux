@@ -1,10 +1,16 @@
+import { randomUUID } from 'node:crypto';
 import { DrizzleMcpStore } from '@lux/control-plane';
 import { getDbClient } from '@lux/db';
-import { McpRegistry } from '@lux/mcp';
 import type { McpServerConfig } from '@lux/mcp';
-import { randomUUID } from 'node:crypto';
+import { McpRegistry } from '@lux/mcp';
 
-import { apiError, apiSuccess, getProjectRole, requireAuth, verifyProjectAccess } from '@/lib/api-utils';
+import {
+  apiError,
+  apiSuccess,
+  getProjectRole,
+  requireAuth,
+  verifyProjectAccess,
+} from '@/lib/api-utils';
 
 function getRegistry() {
   return new McpRegistry(new DrizzleMcpStore(getDbClient()));

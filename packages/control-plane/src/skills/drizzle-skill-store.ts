@@ -56,7 +56,7 @@ export class DrizzleSkillStore implements SkillStore {
   async updateSkill(
     projectId: string,
     skillName: string,
-    update: Partial<SkillConfig>,
+    update: Partial<SkillConfig>
   ): Promise<boolean> {
     const set: Partial<typeof skills.$inferInsert> = {};
     if (update.source !== undefined) set.source = update.source;

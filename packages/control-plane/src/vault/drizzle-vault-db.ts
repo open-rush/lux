@@ -71,7 +71,7 @@ export class DrizzleVaultDb implements VaultStorage {
   async findByName(
     scope: VaultScope,
     name: string,
-    projectId?: string | null,
+    projectId?: string | null
   ): Promise<{ entry: VaultEntry; encryptedValue: string } | null> {
     const [row] = await this.db
       .select()
@@ -107,9 +107,7 @@ export class DrizzleVaultDb implements VaultStorage {
     return result?.value ?? 0;
   }
 
-  async findAllForInjection(
-    projectId: string,
-  ): Promise<
+  async findAllForInjection(projectId: string): Promise<
     Array<{
       name: string;
       encryptedValue: string;
@@ -128,8 +126,8 @@ export class DrizzleVaultDb implements VaultStorage {
       .where(
         or(
           and(eq(vaultEntries.scope, 'platform'), isNull(vaultEntries.projectId)),
-          and(eq(vaultEntries.scope, 'project'), eq(vaultEntries.projectId, projectId)),
-        ),
+          and(eq(vaultEntries.scope, 'project'), eq(vaultEntries.projectId, projectId))
+        )
       );
     return rows.map((r) => ({ ...r, scope: r.scope as VaultScope }));
   }

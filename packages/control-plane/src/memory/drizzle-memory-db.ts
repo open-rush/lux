@@ -1,6 +1,5 @@
 import { type DbClient, userMemories } from '@lux/db';
-import type { MemoryDb } from '@lux/memory';
-import type { MemoryEntry, MemorySearchResult } from '@lux/memory';
+import type { MemoryDb, MemoryEntry, MemorySearchResult } from '@lux/memory';
 import { and, desc, eq, sql } from 'drizzle-orm';
 
 type MemoryRow = typeof userMemories.$inferSelect;
@@ -23,9 +22,7 @@ function mapRow(row: MemoryRow): MemoryEntry {
 export class DrizzleMemoryDb implements MemoryDb {
   constructor(private db: DbClient) {}
 
-  async insert(
-    entry: Omit<MemoryEntry, 'id' | 'createdAt' | 'accessedAt'>,
-  ): Promise<MemoryEntry> {
+  async insert(entry: Omit<MemoryEntry, 'id' | 'createdAt' | 'accessedAt'>): Promise<MemoryEntry> {
     if (entry.embedding && entry.embedding.length > 0) {
       // Use raw SQL to insert with pgvector embedding
       const vectorStr = `[${entry.embedding.join(',')}]`;
@@ -66,11 +63,7 @@ export class DrizzleMemoryDb implements MemoryDb {
   }
 
   async findById(id: string): Promise<MemoryEntry | null> {
-    const [row] = await this.db
-      .select()
-      .from(userMemories)
-      .where(eq(userMemories.id, id))
-      .limit(1);
+    const [row] = await this.db.select().from(userMemories).where(eq(userMemories.id, id)).limit(1);
     return row ? mapRow(row) : null;
   }
 
@@ -79,7 +72,7 @@ export class DrizzleMemoryDb implements MemoryDb {
     projectId: string,
     embedding: number[],
     limit: number,
-    minScore: number,
+    minScore: number
   ): Promise<MemorySearchResult[]> {
     const vectorStr = `[${embedding.join(',')}]`;
     const rows = await this.db.execute(sql`
@@ -117,7 +110,7 @@ export class DrizzleMemoryDb implements MemoryDb {
     agentId: string,
     projectId: string,
     query: string,
-    limit: number,
+    limit: number
   ): Promise<MemorySearchResult[]> {
     // Simple ILIKE text search; upgrade to ts_vector for production
     const rows = await this.db
@@ -127,8 +120,8 @@ export class DrizzleMemoryDb implements MemoryDb {
         and(
           eq(userMemories.agentId, agentId),
           eq(userMemories.projectId, projectId),
-          sql`${userMemories.content} ILIKE ${'%' + query + '%'}`,
-        ),
+          sql`${userMemories.content} ILIKE ${`%${query}%`}`
+        )
       )
       .orderBy(desc(userMemories.createdAt))
       .limit(limit);
@@ -140,11 +133,7 @@ export class DrizzleMemoryDb implements MemoryDb {
     }));
   }
 
-  async listByAgent(
-    agentId: string,
-    projectId: string,
-    limit = 50,
-  ): Promise<MemoryEntry[]> {
+  async listByAgent(agentId: string, projectId: string, limit = 50): Promise<MemoryEntry[]> {
     const rows = await this.db
       .select()
       .from(userMemories)
@@ -155,10 +144,7 @@ export class DrizzleMemoryDb implements MemoryDb {
   }
 
   async remove(id: string): Promise<boolean> {
-    const rows = await this.db
-      .delete(userMemories)
-      .where(eq(userMemories.id, id))
-      .returning();
+    const rows = await this.db.delete(userMemories).where(eq(userMemories.id, id)).returning();
     return rows.length > 0;
   }
 

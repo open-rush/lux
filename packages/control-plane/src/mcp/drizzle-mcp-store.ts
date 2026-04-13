@@ -37,11 +37,7 @@ export class DrizzleMcpStore implements McpConfigStore {
     return rows.map(mapRow);
   }
 
-  async addServer(
-    scope: string,
-    scopeId: string | null,
-    config: McpServerConfig,
-  ): Promise<void> {
+  async addServer(scope: string, scopeId: string | null, config: McpServerConfig): Promise<void> {
     await this.db.insert(mcpServers).values({
       id: config.id,
       scope,
@@ -56,11 +52,7 @@ export class DrizzleMcpStore implements McpConfigStore {
     });
   }
 
-  async removeServer(
-    scope: string,
-    scopeId: string | null,
-    serverId: string,
-  ): Promise<boolean> {
+  async removeServer(scope: string, scopeId: string | null, serverId: string): Promise<boolean> {
     const rows = await this.db
       .delete(mcpServers)
       .where(and(eq(mcpServers.id, serverId), scopeFilter(scope, scopeId)))
@@ -72,7 +64,7 @@ export class DrizzleMcpStore implements McpConfigStore {
     scope: string,
     scopeId: string | null,
     serverId: string,
-    update: Partial<McpServerConfig>,
+    update: Partial<McpServerConfig>
   ): Promise<boolean> {
     const set: Partial<typeof mcpServers.$inferInsert> = {};
     if (update.name !== undefined) set.name = update.name;

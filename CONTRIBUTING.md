@@ -1,6 +1,6 @@
-# Contributing to Rush
+# Contributing to OpenRush
 
-Thanks for your interest in contributing to Rush! This guide covers everything you need to get started.
+Thanks for your interest in contributing to OpenRush! This guide covers everything you need to get started.
 
 ## Development Setup
 

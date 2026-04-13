@@ -1,4 +1,4 @@
-# Rush Documentation
+# OpenRush Documentation
 
 ## Quick Start
 

@@ -1,6 +1,6 @@
 # @rush/observability
 
-Structured logging and request context propagation for Rush's 3-layer architecture.
+Structured logging and request context propagation for OpenRush's 3-layer architecture.
 
 ## What it Does
 

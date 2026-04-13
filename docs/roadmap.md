@@ -1,10 +1,10 @@
-# Open Rush v2 — Roadmap
+# Open OpenRush v2 — Roadmap
 
 ## Vision
 
 Enterprise AI agent infrastructure — self-hosted, multi-scenario, built for every team member.
 
-Rush is a platform that enterprises deploy internally. Once deployed, developers use CLI and API to automate. Non-technical teams build apps, analyze data, and generate content through Web UI. All powered by sandboxed Claude Code agents running in the enterprise's own infrastructure.
+OpenRush is a platform that enterprises deploy internally. Once deployed, developers use CLI and API to automate. Non-technical teams build apps, analyze data, and generate content through Web UI. All powered by sandboxed Claude Code agents running in the enterprise's own infrastructure.
 
 ### Full Picture
 

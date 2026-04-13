@@ -57,7 +57,7 @@ Before running migrations in production:
 pg_dump -Fc $DATABASE_URL > backup-$(date +%Y%m%d-%H%M%S).dump
 ```
 
-This is the operator's responsibility, not automated by Rush (self-hosted = operator controls infrastructure).
+This is the operator's responsibility, not automated by OpenRush (self-hosted = operator controls infrastructure).
 
 ### Required PostgreSQL Extensions
 

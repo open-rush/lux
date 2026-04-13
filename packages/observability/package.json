@@ -32,7 +32,7 @@
     "@opentelemetry/sdk-node": "^0.214.0",
     "@opentelemetry/sdk-trace-node": "^2.6.1",
     "@opentelemetry/semantic-conventions": "^1.40.0",
-    "pino": "^9.6.0"
+    "pino": "^10.3.1"
   },
   "devDependencies": {
     "hono": "^4.7.0",

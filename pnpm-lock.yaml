@@ -304,9 +304,18 @@ importers:
       '@lux/db':
         specifier: workspace:*
         version: link:../db
+      '@lux/mcp':
+        specifier: workspace:*
+        version: link:../mcp
+      '@lux/memory':
+        specifier: workspace:*
+        version: link:../memory
       '@lux/sandbox':
         specifier: workspace:*
         version: link:../sandbox
+      '@lux/skills':
+        specifier: workspace:*
+        version: link:../skills
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@electric-sql/pglite@0.4.4)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(gel@2.2.0)(pg@8.20.0)(postgres@3.4.9)

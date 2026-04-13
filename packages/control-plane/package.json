@@ -20,7 +20,10 @@
   "dependencies": {
     "@lux/contracts": "workspace:*",
     "@lux/db": "workspace:*",
+    "@lux/mcp": "workspace:*",
+    "@lux/memory": "workspace:*",
     "@lux/sandbox": "workspace:*",
+    "@lux/skills": "workspace:*",
     "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {

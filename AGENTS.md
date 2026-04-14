@@ -377,16 +377,40 @@ SSE②: UIMessageChunk 流（control-api → browser）
 - 提交前 `pnpm build && pnpm check && pnpm lint && pnpm test` 全部通过
 - GitHub Actions CI 必须绿才能合并
 
+### 基础单测强制覆盖（无例外）
+
+**每个 API 端点、每个 service 方法、每个 utils 函数都必须有单元测试。** 这是铁律，与 Sparring Review 同级。
+
+| 类别 | 必须覆盖 | 示例 |
+| --- | --- | --- |
+| **API route** | 每个 HTTP method 的正常路径 + 错误路径 + 权限拒绝 | `GET /api/skills` → 搜索/分页/空结果；`DELETE` → 非 owner 返回 403 |
+| **Service 方法** | 每个公开方法的正常路径 + 边界 + 异常 | `SkillRegistryService.toggleStar()` → 收藏/取消/幂等 |
+| **Utils 纯函数** | 每个导出函数的输入输出 + 边界值 + 非法输入 | `parseGitHubUrl()` → 标准 URL / 带 path / .git 后缀 / 无效 |
+| **前端组件** | 有逻辑的组件（解析、状态管理）需要测试 | `parseMcpJsonConfig()` → Cursor 格式 / 单 server / 错误 JSON |
+
+**测试必须和代码在同一个 commit 提交。** 不允许"先提代码后补测试"。
+
+提交前自查清单：
+```
+□ 新增的 API route 有对应 route.test.ts
+□ 新增的 service 方法在 *.test.ts 中有覆盖
+□ 新增的 utils/lib 函数有 *.test.ts
+□ 测试覆盖了正常路径 + 至少一个错误路径
+□ pnpm test 全部通过
+```
+
 ### 什么时候写测试
 
 
-| 场景             | 测试要求            |
-| -------------- | --------------- |
-| 新增有逻辑的函数/模块    | 同步写测试           |
-| 修改已有函数的行为      | 更新对应测试；若无则补写    |
-| 修复有回归风险的 bug   | 先写 Red Test 再修复 |
-| 改文案、调样式、修 typo | 不需要新增测试         |
-| 纯类型定义、配置常量     | 不需要测试           |
+| 场景 | 测试要求 |
+| --- | --- |
+| 新增 API 端点 | **必须**：每个 method 的正常 + 错误 + 权限 |
+| 新增 service/utils 函数 | **必须**：正常路径 + 边界值 + 异常输入 |
+| 新增有逻辑的组件 | **必须**：核心逻辑函数的单测 |
+| 修改已有函数的行为 | 更新对应测试；若无则补写 |
+| 修复有回归风险的 bug | 先写 Red Test 再修复 |
+| 改文案、调样式、修 typo | 不需要新增测试 |
+| 纯类型定义、配置常量 | 不需要测试 |
 
 
 ## 命令参考

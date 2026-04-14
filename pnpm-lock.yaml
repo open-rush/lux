@@ -112,6 +112,9 @@ importers:
       '@open-rush/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@open-rush/integrations':
+        specifier: workspace:*
+        version: link:../../packages/integrations
       '@open-rush/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp

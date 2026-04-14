@@ -21,6 +21,7 @@
     "@open-rush/contracts": "workspace:*",
     "@open-rush/control-plane": "workspace:*",
     "@open-rush/db": "workspace:*",
+    "@open-rush/integrations": "workspace:*",
     "@open-rush/mcp": "workspace:*",
     "@open-rush/memory": "workspace:*",
     "@open-rush/skills": "workspace:*",

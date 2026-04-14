@@ -1,0 +1,17 @@
+#!/bin/sh
+# Pre-commit gate: build + type check + lint (staged files only)
+set -e
+
+echo "🔨 Building..."
+pnpm build --output-logs=errors-only
+
+echo "🔍 Type checking..."
+pnpm check --output-logs=errors-only
+
+echo "🧹 Linting staged files..."
+STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|tsx)$' || true)
+if [ -n "$STAGED" ]; then
+  echo "$STAGED" | xargs npx biome check --no-errors-on-unmatched
+fi
+
+echo "✅ Pre-commit checks passed"

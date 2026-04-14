@@ -2,6 +2,7 @@ export { accounts } from './accounts.js';
 export { agents } from './agents.js';
 export { artifacts } from './artifacts.js';
 export { conversations } from './conversations.js';
+export { mcpRegistry, mcpStars, mcpUserInstalls } from './mcp-registry.js';
 export { mcpServers } from './mcp-servers.js';
 export { messages } from './messages.js';
 export { projectAgents } from './project-agents.js';
@@ -12,6 +13,12 @@ export { runEvents } from './run-events.js';
 export { runs } from './runs.js';
 export { sandboxes } from './sandboxes.js';
 export { sessions } from './sessions.js';
+export {
+  skillGroups,
+  skillGroupMembers,
+  skillRegistry,
+  skillStars,
+} from './skill-registry.js';
 export { skills } from './skills.js';
 export { userMemories } from './user-memories.js';
 export { users } from './users.js';

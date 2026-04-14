@@ -1,4 +1,4 @@
-import type { RunEvent } from '@lux/contracts';
+import type { RunEvent } from '@open-rush/contracts';
 import type { EventStore, EventStoreEvent } from './event-store.js';
 
 export interface ConsumeResult {

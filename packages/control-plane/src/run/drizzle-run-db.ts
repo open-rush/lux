@@ -1,4 +1,4 @@
-import { type DbClient, runs } from '@lux/db';
+import { type DbClient, runs } from '@open-rush/db';
 import { and, desc, eq, lt, notInArray } from 'drizzle-orm';
 
 import type { CreateRunInput, Run, RunDb } from './run-service.js';

@@ -1,5 +1,5 @@
 {
-  "name": "@lux/control-plane",
+  "name": "@open-rush/control-plane",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -18,12 +18,12 @@
     "clean": "rm -rf dist node_modules coverage"
   },
   "dependencies": {
-    "@lux/contracts": "workspace:*",
-    "@lux/db": "workspace:*",
-    "@lux/mcp": "workspace:*",
-    "@lux/memory": "workspace:*",
-    "@lux/sandbox": "workspace:*",
-    "@lux/skills": "workspace:*",
+    "@open-rush/contracts": "workspace:*",
+    "@open-rush/db": "workspace:*",
+    "@open-rush/mcp": "workspace:*",
+    "@open-rush/memory": "workspace:*",
+    "@open-rush/sandbox": "workspace:*",
+    "@open-rush/skills": "workspace:*",
     "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {

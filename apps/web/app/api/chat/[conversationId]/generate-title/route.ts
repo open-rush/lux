@@ -4,8 +4,8 @@
  * Auto-generates conversation title from the first user message.
  */
 
-import { ConversationService, DrizzleConversationDb } from '@lux/control-plane';
-import { getDbClient } from '@lux/db';
+import { ConversationService, DrizzleConversationDb } from '@open-rush/control-plane';
+import { getDbClient } from '@open-rush/db';
 import { apiError, apiSuccess, requireAuth } from '@/lib/api-utils';
 
 export async function POST(

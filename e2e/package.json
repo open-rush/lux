@@ -1,12 +1,12 @@
 {
-  "name": "@lux/e2e",
+  "name": "@open-rush/e2e",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "dependencies": {
-    "@lux/control-plane": "workspace:*",
-    "@lux/db": "workspace:*",
-    "@lux/sandbox": "workspace:*",
+    "@open-rush/control-plane": "workspace:*",
+    "@open-rush/db": "workspace:*",
+    "@open-rush/sandbox": "workspace:*",
     "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {

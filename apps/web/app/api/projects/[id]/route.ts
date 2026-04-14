@@ -1,6 +1,6 @@
-import { UpdateProjectRequest } from '@lux/contracts';
-import { DrizzleProjectDb, ProjectService } from '@lux/control-plane';
-import { getDbClient } from '@lux/db';
+import { UpdateProjectRequest } from '@open-rush/contracts';
+import { DrizzleProjectDb, ProjectService } from '@open-rush/control-plane';
+import { getDbClient } from '@open-rush/db';
 
 import {
   apiError,

@@ -1,4 +1,4 @@
-import { type DbClient, runCheckpoints } from '@lux/db';
+import { type DbClient, runCheckpoints } from '@open-rush/db';
 import { desc, eq } from 'drizzle-orm';
 
 import type { Checkpoint, CheckpointDb } from './checkpoint-service.js';

@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
-  title: 'Lux',
+  title: 'OpenRush',
   description: 'Enterprise AI Agent Infrastructure',
 };
 

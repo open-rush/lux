@@ -1,4 +1,4 @@
-import { type DbClient, vaultEntries } from '@lux/db';
+import { type DbClient, vaultEntries } from '@open-rush/db';
 import { and, count, eq, isNull, or, sql } from 'drizzle-orm';
 
 import type { VaultEntry, VaultScope, VaultStorage } from './vault-service.js';

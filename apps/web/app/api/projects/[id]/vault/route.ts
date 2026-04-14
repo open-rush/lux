@@ -1,5 +1,5 @@
-import { createCryptoService, DrizzleVaultDb, VaultService } from '@lux/control-plane';
-import { getDbClient } from '@lux/db';
+import { createCryptoService, DrizzleVaultDb, VaultService } from '@open-rush/control-plane';
+import { getDbClient } from '@open-rush/db';
 
 import {
   apiError,

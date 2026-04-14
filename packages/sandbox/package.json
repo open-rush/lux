@@ -1,5 +1,5 @@
 {
-  "name": "@lux/sandbox",
+  "name": "@open-rush/sandbox",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -18,7 +18,7 @@
     "clean": "rm -rf dist node_modules coverage"
   },
   "dependencies": {
-    "@lux/contracts": "workspace:*"
+    "@open-rush/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

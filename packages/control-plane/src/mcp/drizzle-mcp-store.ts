@@ -1,5 +1,5 @@
-import { type DbClient, mcpServers } from '@lux/db';
-import type { McpConfigStore, McpServerConfig, McpTransport } from '@lux/mcp';
+import { type DbClient, mcpServers } from '@open-rush/db';
+import type { McpConfigStore, McpServerConfig, McpTransport } from '@open-rush/mcp';
 import { and, eq, isNull } from 'drizzle-orm';
 
 type McpRow = typeof mcpServers.$inferSelect;

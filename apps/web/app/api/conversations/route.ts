@@ -1,5 +1,5 @@
-import { ConversationService, DrizzleConversationDb } from '@lux/control-plane';
-import { getDbClient } from '@lux/db';
+import { ConversationService, DrizzleConversationDb } from '@open-rush/control-plane';
+import { getDbClient } from '@open-rush/db';
 import { resolveAgentIdForProject } from '@/lib/agents/resolve-agent-id';
 import { apiError, apiSuccess, requireAuth, verifyProjectAccess } from '@/lib/api-utils';
 

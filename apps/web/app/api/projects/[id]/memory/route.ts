@@ -1,7 +1,7 @@
-import { DrizzleMemoryDb } from '@lux/control-plane';
-import { getDbClient } from '@lux/db';
-import type { CreateMemoryInput, MemorySearchOptions } from '@lux/memory';
-import { MemoryStore } from '@lux/memory';
+import { DrizzleMemoryDb } from '@open-rush/control-plane';
+import { getDbClient } from '@open-rush/db';
+import type { CreateMemoryInput, MemorySearchOptions } from '@open-rush/memory';
+import { MemoryStore } from '@open-rush/memory';
 
 import { apiError, apiSuccess, requireAuth, verifyProjectAccess } from '@/lib/api-utils';
 

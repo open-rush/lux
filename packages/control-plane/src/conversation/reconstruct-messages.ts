@@ -1,4 +1,4 @@
-import type { RunEvent } from '@lux/contracts';
+import type { RunEvent } from '@open-rush/contracts';
 
 export interface ReconstructedMessage {
   role: 'user' | 'assistant';

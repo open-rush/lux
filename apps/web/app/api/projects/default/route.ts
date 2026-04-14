@@ -5,7 +5,7 @@
  * Used by the chat flow to ensure every conversation has a project.
  */
 
-import { getDbClient, projects } from '@lux/db';
+import { getDbClient, projects } from '@open-rush/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { apiError, apiSuccess, requireAuth } from '@/lib/api-utils';
 

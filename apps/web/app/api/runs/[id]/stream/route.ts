@@ -1,5 +1,5 @@
-import { DrizzleRunDb, isTerminal, RunService } from '@lux/control-plane';
-import { agents, getDbClient, runEvents } from '@lux/db';
+import { DrizzleRunDb, isTerminal, RunService } from '@open-rush/control-plane';
+import { agents, getDbClient, runEvents } from '@open-rush/db';
 import { and, eq, gt } from 'drizzle-orm';
 
 import { apiError, requireAuth, verifyProjectAccess } from '@/lib/api-utils';

@@ -1,4 +1,4 @@
-import type { CreateSandboxOptions, SandboxProvider } from '@lux/sandbox';
+import type { CreateSandboxOptions, SandboxProvider } from '@open-rush/sandbox';
 import type { EventStore } from '../event-store.js';
 import { AgentBridge } from './agent-bridge.js';
 import type { AgentExecutor } from './agent-executor.js';

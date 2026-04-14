@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { CreateAgentRequest } from '@lux/contracts';
-import { DrizzleAgentConfigStore, ProjectAgentService } from '@lux/control-plane';
-import { getDbClient } from '@lux/db';
+import { CreateAgentRequest } from '@open-rush/contracts';
+import { DrizzleAgentConfigStore, ProjectAgentService } from '@open-rush/control-plane';
+import { getDbClient } from '@open-rush/db';
 
 import {
   apiError,

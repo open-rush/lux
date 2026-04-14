@@ -1,5 +1,5 @@
-import { DrizzleRunDb, RunService } from '@lux/control-plane';
-import { agents, getDbClient } from '@lux/db';
+import { DrizzleRunDb, RunService } from '@open-rush/control-plane';
+import { agents, getDbClient } from '@open-rush/db';
 import { eq } from 'drizzle-orm';
 
 import { apiError, apiSuccess, requireAuth, verifyProjectAccess } from '@/lib/api-utils';

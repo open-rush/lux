@@ -1,6 +1,6 @@
-import { DrizzleSkillStore } from '@lux/control-plane';
-import { getDbClient } from '@lux/db';
-import { ReskillClient, SkillManager } from '@lux/skills';
+import { DrizzleSkillStore } from '@open-rush/control-plane';
+import { getDbClient } from '@open-rush/db';
+import { ReskillClient, SkillManager } from '@open-rush/skills';
 
 import {
   apiError,

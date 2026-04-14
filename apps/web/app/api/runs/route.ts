@@ -1,11 +1,11 @@
-import { CreateRunRequest } from '@lux/contracts';
+import { CreateRunRequest } from '@open-rush/contracts';
 import {
   DrizzleAgentConfigStore,
   DrizzleRunDb,
   ProjectAgentService,
   RunService,
-} from '@lux/control-plane';
-import { getDbClient, projects } from '@lux/db';
+} from '@open-rush/control-plane';
+import { getDbClient, projects } from '@open-rush/db';
 import { eq } from 'drizzle-orm';
 
 import { apiError, apiSuccess, requireAuth, verifyProjectAccess } from '@/lib/api-utils';

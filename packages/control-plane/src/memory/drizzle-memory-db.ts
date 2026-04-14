@@ -1,5 +1,5 @@
-import { type DbClient, userMemories } from '@lux/db';
-import type { MemoryDb, MemoryEntry, MemorySearchResult } from '@lux/memory';
+import { type DbClient, userMemories } from '@open-rush/db';
+import type { MemoryDb, MemoryEntry, MemorySearchResult } from '@open-rush/memory';
 import { and, desc, eq, sql } from 'drizzle-orm';
 
 type MemoryRow = typeof userMemories.$inferSelect;

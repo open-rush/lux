@@ -1,4 +1,4 @@
-import { getDbClient, runs } from '@lux/db';
+import { getDbClient, runs } from '@open-rush/db';
 import { and, desc, ilike } from 'drizzle-orm';
 
 import { apiError, apiSuccess, requireAuth } from '@/lib/api-utils';

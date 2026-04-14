@@ -1,4 +1,4 @@
-import { agents, type DbClient } from '@lux/db';
+import { agents, type DbClient } from '@open-rush/db';
 import { and, eq } from 'drizzle-orm';
 
 import type { AgentConfig, AgentConfigStore } from './agent-config.js';

@@ -1,6 +1,6 @@
-import { AddMemberRequest } from '@lux/contracts';
-import { DrizzleMembershipDb, ProjectMemberService } from '@lux/control-plane';
-import { getDbClient } from '@lux/db';
+import { AddMemberRequest } from '@open-rush/contracts';
+import { DrizzleMembershipDb, ProjectMemberService } from '@open-rush/control-plane';
+import { getDbClient } from '@open-rush/db';
 
 import {
   apiError,

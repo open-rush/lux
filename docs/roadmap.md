@@ -1,10 +1,10 @@
-# Lux — Roadmap
+# OpenRush — Roadmap
 
 ## Vision
 
 Enterprise AI agent infrastructure — self-hosted, multi-scenario, built for every team member.
 
-Lux is a platform that enterprises deploy internally. Once deployed, developers use CLI and API to automate. Non-technical teams build apps, analyze data, and generate content through Web UI. All powered by sandboxed Claude Code agents running in the enterprise's own infrastructure.
+OpenRush is a platform that enterprises deploy internally. Once deployed, developers use CLI and API to automate. Non-technical teams build apps, analyze data, and generate content through Web UI. All powered by sandboxed Claude Code agents running in the enterprise's own infrastructure.
 
 ### Full Picture
 
@@ -46,7 +46,7 @@ The initial release focuses on: **platform layer + web app building scenario + W
 ## Repo Structure
 
 ```
-lux/
+open-rush/
 ├── apps/
 │   ├── web/                    # Next.js 16 — User Portal + Control API
 │   ├── control-worker/         # Background orchestration — pg-boss consumer, state machine

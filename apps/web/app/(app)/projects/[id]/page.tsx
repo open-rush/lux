@@ -14,8 +14,8 @@ async function getProject(id: string, userId: string) {
     DrizzleProjectDb,
     ProjectAgentService,
     ProjectService,
-  } = await import('@lux/control-plane');
-  const { getDbClient } = await import('@lux/db');
+  } = await import('@open-rush/control-plane');
+  const { getDbClient } = await import('@open-rush/db');
   const db = getDbClient();
   const service = new ProjectService(new DrizzleProjectDb(db));
   const project = await service.getById(id);

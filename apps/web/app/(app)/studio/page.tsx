@@ -4,8 +4,8 @@ import { auth } from '@/auth';
 import { AgentStudioClient } from '@/components/agents/agent-studio-client';
 
 async function getProjects(userId: string) {
-  const { DrizzleProjectDb, ProjectService } = await import('@lux/control-plane');
-  const { getDbClient } = await import('@lux/db');
+  const { DrizzleProjectDb, ProjectService } = await import('@open-rush/control-plane');
+  const { getDbClient } = await import('@open-rush/db');
   const db = getDbClient();
   const service = new ProjectService(new DrizzleProjectDb(db));
   return service.listByUser(userId);

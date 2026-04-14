@@ -1,5 +1,5 @@
-import { type DbClient, skills } from '@lux/db';
-import type { SkillConfig, SkillStore } from '@lux/skills';
+import { type DbClient, skills } from '@open-rush/db';
+import type { SkillConfig, SkillStore } from '@open-rush/skills';
 import { and, eq } from 'drizzle-orm';
 
 type SkillRow = typeof skills.$inferSelect;

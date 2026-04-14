@@ -1,6 +1,6 @@
-# Contributing to Lux
+# Contributing to OpenRush
 
-Thanks for your interest in contributing to Lux! This guide covers everything you need to get started.
+Thanks for your interest in contributing to OpenRush! This guide covers everything you need to get started.
 
 ## Development Setup
 
@@ -14,8 +14,8 @@ Thanks for your interest in contributing to Lux! This guide covers everything yo
 
 ```bash
 # Clone the repo
-git clone https://github.com/rush-open/lux.git
-cd lux
+git clone https://github.com/kanyun-rush/open-rush.git
+cd open-rush
 
 # Install dependencies
 pnpm install
@@ -122,4 +122,4 @@ For significant design decisions, we maintain specs in `specs/`. If your change 
 
 ## Questions?
 
-Open a [discussion](https://github.com/rush-open/lux/discussions) or an issue.
+Open a [discussion](https://github.com/kanyun-rush/open-rush/discussions) or an issue.

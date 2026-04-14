@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { RunEvent } from '@lux/contracts';
+import type { RunEvent } from '@open-rush/contracts';
 
 export interface EventStoreEvent {
   runId: string;

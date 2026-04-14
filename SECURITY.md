@@ -10,7 +10,7 @@
 
 **Do NOT open a public issue for security vulnerabilities.**
 
-Please report security vulnerabilities by emailing: **security@lux.dev**
+Please report security vulnerabilities by emailing: **security@open-rush.dev**
 
 You should receive a response within 48 hours. If you don't, please follow up to ensure we received your report.
 

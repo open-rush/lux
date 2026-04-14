@@ -23,10 +23,10 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.0
         version: 1.19.14(hono@4.12.12)
-      '@lux/agent-runtime':
+      '@open-rush/agent-runtime':
         specifier: workspace:*
         version: link:../../packages/agent-runtime
-      '@lux/contracts':
+      '@open-rush/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       ai:
@@ -57,19 +57,19 @@ importers:
 
   apps/control-worker:
     dependencies:
-      '@lux/contracts':
+      '@open-rush/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@lux/control-plane':
+      '@open-rush/control-plane':
         specifier: workspace:*
         version: link:../../packages/control-plane
-      '@lux/db':
+      '@open-rush/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@lux/sandbox':
+      '@open-rush/sandbox':
         specifier: workspace:*
         version: link:../../packages/sandbox
-      '@lux/stream':
+      '@open-rush/stream':
         specifier: workspace:*
         version: link:../../packages/stream
       pg-boss:
@@ -103,22 +103,22 @@ importers:
       '@base-ui/react':
         specifier: ^1.3.0
         version: 1.4.0(@date-fns/tz@1.4.1)(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      '@lux/contracts':
+      '@open-rush/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@lux/control-plane':
+      '@open-rush/control-plane':
         specifier: workspace:*
         version: link:../../packages/control-plane
-      '@lux/db':
+      '@open-rush/db':
         specifier: workspace:*
         version: link:../../packages/db
-      '@lux/mcp':
+      '@open-rush/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
-      '@lux/memory':
+      '@open-rush/memory':
         specifier: workspace:*
         version: link:../../packages/memory
-      '@lux/skills':
+      '@open-rush/skills':
         specifier: workspace:*
         version: link:../../packages/skills
       '@radix-ui/react-use-controllable-state':
@@ -251,13 +251,13 @@ importers:
 
   e2e:
     dependencies:
-      '@lux/control-plane':
+      '@open-rush/control-plane':
         specifier: workspace:*
         version: link:../packages/control-plane
-      '@lux/db':
+      '@open-rush/db':
         specifier: workspace:*
         version: link:../packages/db
-      '@lux/sandbox':
+      '@open-rush/sandbox':
         specifier: workspace:*
         version: link:../packages/sandbox
       drizzle-orm:
@@ -307,22 +307,22 @@ importers:
 
   packages/control-plane:
     dependencies:
-      '@lux/contracts':
+      '@open-rush/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@lux/db':
+      '@open-rush/db':
         specifier: workspace:*
         version: link:../db
-      '@lux/mcp':
+      '@open-rush/mcp':
         specifier: workspace:*
         version: link:../mcp
-      '@lux/memory':
+      '@open-rush/memory':
         specifier: workspace:*
         version: link:../memory
-      '@lux/sandbox':
+      '@open-rush/sandbox':
         specifier: workspace:*
         version: link:../sandbox
-      '@lux/skills':
+      '@open-rush/skills':
         specifier: workspace:*
         version: link:../skills
       drizzle-orm:
@@ -480,7 +480,7 @@ importers:
 
   packages/sandbox:
     dependencies:
-      '@lux/contracts':
+      '@open-rush/contracts':
         specifier: workspace:*
         version: link:../contracts
     devDependencies:

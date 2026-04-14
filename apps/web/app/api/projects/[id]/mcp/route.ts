@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { DrizzleMcpStore } from '@lux/control-plane';
-import { getDbClient } from '@lux/db';
-import type { McpServerConfig } from '@lux/mcp';
-import { McpRegistry } from '@lux/mcp';
+import { DrizzleMcpStore } from '@open-rush/control-plane';
+import { getDbClient } from '@open-rush/db';
+import type { McpServerConfig } from '@open-rush/mcp';
+import { McpRegistry } from '@open-rush/mcp';
 
 import {
   apiError,

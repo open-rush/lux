@@ -5,8 +5,8 @@
  * Returns { projectId, conversationId } so the frontend can start chatting.
  */
 
-import { ConversationService, DrizzleConversationDb } from '@lux/control-plane';
-import { getDbClient, projects } from '@lux/db';
+import { ConversationService, DrizzleConversationDb } from '@open-rush/control-plane';
+import { getDbClient, projects } from '@open-rush/db';
 import { and, eq, isNull } from 'drizzle-orm';
 import { resolveAgentIdForProject } from '@/lib/agents/resolve-agent-id';
 import { apiError, apiSuccess, requireAuth, verifyProjectAccess } from '@/lib/api-utils';

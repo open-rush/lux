@@ -1,6 +1,6 @@
 'use client';
 
-import type { Agent, ProjectAgent } from '@lux/contracts';
+import type { Agent, ProjectAgent } from '@open-rush/contracts';
 import { Bot, Loader2, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {

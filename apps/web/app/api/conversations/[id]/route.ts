@@ -2,8 +2,8 @@ import {
   ConversationService,
   DrizzleConversationDb,
   reconstructMessages,
-} from '@lux/control-plane';
-import { agents, getDbClient, runEvents, runs } from '@lux/db';
+} from '@open-rush/control-plane';
+import { agents, getDbClient, runEvents, runs } from '@open-rush/db';
 import { and, eq } from 'drizzle-orm';
 
 import { apiError, apiSuccess, requireAuth } from '@/lib/api-utils';

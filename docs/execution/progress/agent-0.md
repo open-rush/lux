@@ -77,3 +77,217 @@
 
 ## M1 Milestone
 所有 task-1/2/3/4 完成后,M1(Foundation)结束。Agent-A (M2) 和 Agent-B (M3) 可并行启动。
+
+---
+
+## 交接(Agent-0 下线,新 agent 接 task-5 + task-6)
+
+Agent-0 在 task-4 PR #139 后 context 约 55-60%,按规则必换。此小节给接班 agent 用,只记决策 / 契约 / 坑。不贴代码或 diff。
+
+### 当前状态快照
+
+- M1 schema 全部 merged:agent_definition_versions / service_tokens / runs+tasks 扩展
+- M1 contracts v1 全部完成:24 endpoint Zod schema(PR #139 pending merge)
+- **Agent-A / Agent-B 仍阻塞**在 task-4 merge 上。一旦 #139 进 main,他们可并行启动。
+- Agent-0 剩余:task-5(unified auth middleware) + task-6(auth tokens CRUD API)
+
+### task-5: Unified Auth Middleware
+
+**文件域**:`apps/web/lib/auth/unified-auth.ts` + `unified-auth.test.ts`。**不要**改动 contracts / db / control-plane。
+
+**契约**(消费 `@open-rush/contracts` v1 的现成类型):
+
+```typescript
+// 用 @open-rush/contracts 的 v1.AuthScope / v1.ServiceTokenScope
+// 不要重新定义这些枚举。
+type AuthContext = {
+  userId: string;
+  scopes: v1.AuthScope[];       // ['*'] for session, 显式 list for token
+  authType: 'session' | 'service-token';
+};
+
+authenticate(req: Request): Promise<AuthContext | null>
+hasScope(ctx: AuthContext, required: v1.ServiceTokenScope): boolean
+```
+
+**实现要点**:
+
+1. **Authorization header 先检查 `Bearer sk_*`**
+   - 提取 raw token,`createHash('sha256').update(raw).digest('hex')` 算 hash
+   - 查 `service_tokens WHERE token_hash = ? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())`
+   - 找不到 → return null
+   - 找到 → 异步 `update service_tokens set last_used_at = now() where id = ?`(**不 await,不阻塞请求**),return AuthContext
+
+2. **否则走 NextAuth session**
+   - 项目 Next.js 16 Route Handlers 拿 session 的方式需要先查已有 route。参见 `apps/web/app/api/skills/*/route.ts` 或 `apps/web/app/api/projects/*/route.ts` 里怎么用 `auth()` / `getServerSession`。沿用同一 helper。
+   - 有 session → AuthContext { userId, scopes: ['*'], authType: 'session' }
+
+3. **两者都没有 → return null**
+
+4. **hasScope**:`ctx.scopes.includes('*') || ctx.scopes.includes(required)`
+
+**测试覆盖**(`apps/web/lib/auth/unified-auth.test.ts`,必须全部覆盖):
+- 有效 session → authType='session', scopes=['*']
+- 有效 service-token → authType='service-token', scopes=<显式>
+- 无 Authorization + 无 cookie → null
+- service-token revoked → null
+- service-token expired → null
+- service-token 不存在 → null
+- lastUsedAt 更新不阻塞(用 fake timer 或 mock DB 断言异步)
+- hasScope session 通配 `*`
+- hasScope service-token 显式匹配
+- hasScope service-token 不匹配 → false
+
+**坑**:
+- NextAuth session 的获取方式:**先 grep 现有 route**(`apps/web/app/api/`)看用的是 `auth()` 还是 `getServerSession()`。Next.js 16 + NextAuth v5 有两种写法,沿用已有的。
+- **明文 token 不进日志**。任何 `console.log(authHeader)` / `logger.info({ token })` 都是违反铁律。
+- Plaintext token 长度可能超过 varchar(255):sk_ + base64url(32bytes) ≈ 47 字符,合规。但接收方不要把明文落任何表。
+
+### task-6: POST/GET/DELETE /api/v1/auth/tokens
+
+**文件域**:`apps/web/app/api/v1/auth/tokens/route.ts`(POST+GET)、`apps/web/app/api/v1/auth/tokens/[id]/route.ts`(DELETE)、service 层可选新建 `apps/web/lib/auth/service-token-service.ts`(复用利于 task-5 / 未来 SDK)。
+
+**消费 contracts**(task-4 已就位):
+- `v1.createTokenRequestSchema` / `v1.createTokenResponseSchema`
+- `v1.listTokensResponseSchema` / `v1.tokenListItemSchema`
+- `v1.deleteTokenParamsSchema` / `v1.deleteTokenResponseSchema`
+- `v1.errorResponseSchema` + `v1.ErrorCode` + `v1.ERROR_CODE_HTTP_STATUS`
+
+**POST `/api/v1/auth/tokens`**:
+
+1. 调 `authenticate(req)`,**拒绝 service-token 自颁发** → 401/`UNAUTHORIZED`(spec §颁发流程 前置条件)
+2. `createTokenRequestSchema.parse(body)` — schema 已经拒绝 scopes 含 `*`、expiresAt 过去 / > 90 天(task-4 superRefine 已内置,**不要在 route 重新校验**)
+3. 额外 service 层护栏:同 user 存活 token ≤ 20
+   - query `SELECT count(*) FROM service_tokens WHERE owner_user_id = ? AND revoked_at IS NULL`
+   - ≥ 20 → 400/`VALIDATION_ERROR`,hint="revoke an existing token first"
+4. 生成明文:`'sk_' + randomBytes(32).toString('base64url')`
+5. hash:`createHash('sha256').update(raw).digest('hex')`
+6. insert service_tokens(token_hash, name, owner_user_id, scopes, expires_at)
+7. 返回 201,body 含 `data: { id, token: <明文>, name, scopes, createdAt, expiresAt }` — **此次唯一一次明文出现**
+
+**GET `/api/v1/auth/tokens`**:
+
+1. `authenticate(req)`,允许 session 和 service-token(但只返回自己的)
+2. `v1.paginationQuerySchema.parse(query)`
+3. query `WHERE owner_user_id = ?`,按 created_at DESC,limit/cursor
+4. 返回 paginated envelope,row shape = `tokenListItemSchema`(**不含 token、不含 token_hash**)
+
+**DELETE `/api/v1/auth/tokens/:id`**:
+
+1. `authenticate(req)` + ownership 校验(token.owner_user_id == auth.userId)
+2. 软删:`UPDATE service_tokens SET revoked_at = now() WHERE id = ? AND owner_user_id = ? AND revoked_at IS NULL`
+3. 幂等:已吊销再 DELETE 同一 ID → 200 返回已有 revoked_at(不再写入)
+4. 物理保留行
+
+**测试**(`apps/web/app/api/v1/auth/tokens/__tests__/route.test.ts` + `[id]/route.test.ts`):
+- POST session 成功 → 201 + 明文 token 返回
+- POST service-token auth → 401(禁止自颁发)
+- POST body.scopes 含 `*` → 400(但其实是 schema 层 VALIDATION_ERROR,确认 error code)
+- POST expiresAt 过去 → 400
+- POST expiresAt > 90 天 → 400
+- POST 第 21 个 → 400 hint 要求吊销
+- GET 列表 → 无 token 字段 / 无 token_hash 字段(grep assertion)
+- GET 分页 cursor
+- GET service-token auth → 允许,只列该 owner 的
+- DELETE 自己的 → revoked_at 设置
+- DELETE 别人的 → 403/`FORBIDDEN`
+- DELETE 不存在的 → 404/`NOT_FOUND`
+- DELETE 已吊销的 → 200 幂等
+
+### repo 隐性约定(我踩过的坑)
+
+1. **pnpm filter 带连字符**:`@open-rush/db`(不是 `@openrush/db`)。verify.sh 已经在 task-2 前修过,现在正确。若新增 workspace package 记得用连字符命名。
+
+2. **pglite test helper ↔ drizzle schema 双写**:
+   - `packages/db/test/pglite-helpers.ts` 里的 inline `CREATE TABLE` 要与 drizzle schema 同步。
+   - 同步还有两处:`packages/control-plane/src/__tests__/drizzle-event-store.test.ts`、`drizzle-run-db.test.ts` — 这俩文件自己写 inline CREATE,加字段时三处都改。
+   - **坑**:如果只改 drizzle schema 没改 pglite helper,db 测试通过,但 control-plane 测试失败。
+
+3. **drizzle-kit generate 有 phantom journal entry 问题**:
+   - 本地跑过 `pnpm drizzle-kit generate` 后如果中途删了 SQL 文件,journal 里会留幽灵条目。
+   - **push 前必 diff** `packages/db/drizzle/meta/_journal.json`,确认没多余条目。
+   - 命名:drizzle 自动生成 random tag(如 `0011_young_supreme_intelligence`),你要手动 rename 文件 + 改 journal tag 为语义名(如 `0011_runs_versioning_idempotency`)。
+
+4. **biome 自动格式化**:
+   - `pnpm format` 会自动 fix import 排序、括号等
+   - 不要手动调整 import 顺序
+   - pre-commit lint-staged 会跑 biome check,格式不过 commit 不给过
+
+5. **git pre-commit hook 绝不跳过**:
+   - `--no-verify` 违反 AGENTS.md 铁律
+   - 如果 hook 失败,修好再重新 commit,不要 `--no-verify`
+
+6. **Sparring 是铁律**:
+   - 每个 commit 前必须跑 `agent --print --trust --model gpt-5.3-codex-xhigh` 审
+   - APPROVE 或仅 NIT → 继续
+   - MUST-FIX / SHOULD-FIX → 修复再审
+   - 最多 5 轮,超了升级 team-lead
+
+7. **受保护文件清单**(不得 edit):
+   - `.claude/plans/managed-agents-p0-p1.md`
+   - `docs/execution/verify.sh`(已修过 scope bug,现在正确)
+   - `specs/managed-agents-api.md` / `specs/agent-definition-versioning.md` / `specs/service-token-auth.md`
+   - `docs/execution/TASKS.md`(只允许勾 checkbox,不改描述)
+   - 需要改这些 → 立刻 SendMessage team-lead 停手
+
+### Contracts v1 消费速查表
+
+所有 Zod schema 都在 `@open-rush/contracts`(task-4 合入后),有两种 import 方式:
+
+```typescript
+// 方式 A:具名 import(最常用)
+import {
+  createTokenRequestSchema,
+  errorResponseSchema,
+  ErrorCode,
+  AuthScope,
+  ERROR_CODE_HTTP_STATUS,
+} from '@open-rush/contracts';
+
+// 方式 B:v1 namespace(避免和内部 Run/Project 同名冲突时)
+import { v1 } from '@open-rush/contracts';
+v1.createTokenRequestSchema.parse(body);
+```
+
+每个 schema 都导出了 `z.infer` 类型,直接用:
+
+```typescript
+import type { CreateTokenRequest, TokenListItem, AuthContext } from '@open-rush/contracts';
+```
+
+route handler 典型模式:
+
+```typescript
+const auth = await authenticate(req);
+if (!auth) return Response.json({
+  error: { code: 'UNAUTHORIZED', message: 'auth required' }
+}, { status: ERROR_CODE_HTTP_STATUS.UNAUTHORIZED });
+
+if (auth.authType === 'service-token') return Response.json({
+  error: { code: 'FORBIDDEN', message: 'session required' }
+}, { status: ERROR_CODE_HTTP_STATUS.FORBIDDEN });
+
+const parsed = createTokenRequestSchema.safeParse(await req.json());
+if (!parsed.success) return Response.json({
+  error: {
+    code: 'VALIDATION_ERROR',
+    message: 'invalid body',
+    issues: parsed.error.issues.map(i => ({ path: i.path, message: i.message })),
+  },
+}, { status: ERROR_CODE_HTTP_STATUS.VALIDATION_ERROR });
+
+// ... 业务
+```
+
+### Spec 刷新待办(不阻塞 task-5/6)
+
+team-lead 会在 task-4 merge 后开 `chore/spec-align-ui-message-chunk`,把 `specs/managed-agents-api.md §事件 payload 类型` 从 AI SDK 3 风格更新到 AI SDK 6 UIMessageChunk。不影响 task-5/6,但 task-10/14 的 agent 要注意读的是更新后的 spec。
+
+### 汇报节奏提醒
+
+team-lead 期望:
+- 开始每 task → SendMessage 一句话(预估工期)
+- 卡住 / Sparring 第 3 轮未过 / 受保护文件冲突 → SendMessage 求助
+- PR 创建 → SendMessage 带 URL
+- context 过 50% → 主动汇报,过 70% 再汇报
+- **task-4 PR merge 消息(Agent-0 职责)**:team-lead merge 后会发信号,Agent-0 要用明显标记回 "✅ **task-4 MERGED** — Agent-A/B 可启动"

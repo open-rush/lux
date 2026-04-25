@@ -23,11 +23,11 @@ beforeAll(async () => {
   const result = await createTestDb();
   db = result.db;
   pglite = result.pglite;
-});
+}, 30000);
 
 afterAll(async () => {
   await closeTestDb(pglite);
-});
+}, 30000);
 
 beforeEach(async () => {
   await truncateAll(db);

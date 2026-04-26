@@ -1,0 +1,2186 @@
+openapi: 3.0.3
+info:
+  title: Open-rush Managed Agents API
+  version: 0.1.0
+  description: |
+    **Stable contract** for external callers (rush-app / CLI / third-party SDKs)
+    to drive `/api/v1/*` for programmatic agent orchestration.
+
+    - 26 REST endpoints across Auth / AgentDefinition / Agent / Run / Vault / Registry / Projects
+    - One SSE stream endpoint (Server-Sent Events, `text/event-stream`, `Last-Event-ID` reconnect)
+    - Event payload aligned with [AI SDK UIMessageChunk](https://ai-sdk.dev) + `data-openrush-*` extensions
+
+    ### Authoritative sources
+    - Zod schemas + TypeScript types: `packages/contracts/src/v1/*.ts`
+    - Design decisions: `specs/managed-agents-api.md`, `specs/service-token-auth.md`,
+      `specs/agent-definition-versioning.md`, `specs/vault-design.md`
+    - State machine: `packages/contracts/src/enums.ts` `RunStatus` (15-state) + wire
+      superset `cancelled`
+
+    ### Versioning
+    - URL carries `/v1/`. Non-compatible changes go to `/v2/`.
+    - Additive changes (new optional fields, new endpoints) are rolled in-place.
+    - `/v1/` is maintained ≥ 6 months after `/v2/` ships.
+
+    ### Error envelope
+    All error responses share: `{ "error": { "code", "message", "hint?", "issues?" } }`.
+    Error `code` is one of the 8 values in `components.schemas.ErrorCode`; HTTP status
+    is paired 1:1 (401/403/404/400/409/409/429/500).
+
+    ### Pagination
+    Query: `?limit=1..200&cursor=<opaque>` (default 50). Response:
+    `{ "data": [...], "nextCursor": "..." | null }`.
+
+    ### Idempotency (POST /runs only in v0.1)
+    `POST /api/v1/agents/{agentId}/runs` accepts optional `Idempotency-Key` header:
+    URL-safe ASCII `[A-Za-z0-9_-]+`, max 160 chars. Within 24h: same key + same body
+    hash → same run replayed; same key + different body → `409 IDEMPOTENCY_CONFLICT`.
+    Other POST endpoints are NOT idempotent in v0.1.
+
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  contact:
+    name: Open-rush
+    url: https://github.com/kanyun-rush/open-rush
+
+servers:
+  - url: https://{host}
+    description: Self-hosted Open-rush instance
+    variables:
+      host:
+        default: rush.example.com
+        description: Your Open-rush host (no scheme prefix, no path).
+  - url: http://localhost:3000
+    description: Local development (apps/web)
+
+tags:
+  - name: Auth
+    description: Service Token issuance + revocation (3 endpoints)
+  - name: AgentDefinition
+    description: Versioned agent blueprint CRUD (6 endpoints)
+  - name: Agent
+    description: Agent (task row) CRUD (4 endpoints)
+  - name: Run
+    description: Run lifecycle + SSE event stream (5 endpoints)
+  - name: Vault
+    description: Credential vault entries (3 endpoints)
+  - name: Registry
+    description: Skill + MCP registry read surface (2 endpoints)
+  - name: Project
+    description: Project minimal CRUD (3 endpoints)
+
+security:
+  - serviceToken: []
+  - sessionCookie: []
+
+paths:
+  # ---------------------------------------------------------------------------
+  # Auth (3)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/auth/tokens:
+    post:
+      tags: [Auth]
+      summary: Issue a Service Token
+      description: |
+        Create a Service Token. **Session-only**: this endpoint rejects
+        Service-Token-authenticated callers with `403 FORBIDDEN` to prevent
+        token self-issuance (spec §颁发流程).
+
+        Plaintext token is returned **exactly once** in the response body. All
+        subsequent reads (`GET /api/v1/auth/tokens`) omit the `token` field.
+
+        Guardrails (v0.1):
+        - `scopes` must be a non-empty subset of `ServiceTokenScope`; `'*'` is
+          rejected with `400 VALIDATION_ERROR`.
+        - `expiresAt` is required and must be `now() + 1ms .. now() + 90d`.
+        - Per-user active token cap: 20.
+      operationId: createServiceToken
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTokenRequest'
+            examples:
+              cli:
+                summary: CLI token valid for 60 days
+                value:
+                  name: my-cli-token
+                  scopes: [agents:read, agents:write, runs:read, runs:write]
+                  expiresAt: '2026-07-01T00:00:00Z'
+      responses:
+        '201':
+          description: Created. Plaintext `token` returned once.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTokenResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/Internal' }
+    get:
+      tags: [Auth]
+      summary: List caller's Service Tokens
+      description: |
+        List Service Tokens owned by the authenticated user. Works with session
+        OR Service Token auth. `token` plaintext is never returned.
+      operationId: listServiceTokens
+      parameters:
+        - $ref: '#/components/parameters/LimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTokensResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/auth/tokens/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceIdPath'
+    delete:
+      tags: [Auth]
+      summary: Revoke a Service Token (soft delete)
+      description: |
+        Soft delete: sets `revoked_at`. Row is retained for audit. Subsequent
+        authentication attempts with the revoked token return `401`.
+      operationId: revokeServiceToken
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteTokenResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------------------
+  # AgentDefinition (6)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/agent-definitions:
+    post:
+      tags: [AgentDefinition]
+      summary: Create a new AgentDefinition (version 1)
+      description: |
+        Creates an AgentDefinition blueprint at `version=1`. Subsequent PATCHes
+        create incremented versions; old versions remain queryable via
+        `GET /api/v1/agent-definitions/{id}?version=N`.
+
+        Requires scope `agent-definitions:write` + project membership of
+        `projectId`.
+      operationId: createAgentDefinition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAgentDefinitionRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAgentDefinitionResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    get:
+      tags: [AgentDefinition]
+      summary: List AgentDefinitions
+      operationId: listAgentDefinitions
+      parameters:
+        - $ref: '#/components/parameters/LimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+        - name: projectId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: includeArchived
+          in: query
+          required: false
+          description: Include archived definitions in results (default false).
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAgentDefinitionsResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/agent-definitions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceIdPath'
+    get:
+      tags: [AgentDefinition]
+      summary: Get AgentDefinition (current or historical version)
+      description: |
+        Without `?version=N`, returns the current version. With `?version=N`,
+        returns a historical snapshot.
+      operationId: getAgentDefinition
+      parameters:
+        - name: version
+          in: query
+          required: false
+          description: Historical version to fetch (1-indexed, positive integer).
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAgentDefinitionResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [AgentDefinition]
+      summary: Patch AgentDefinition (creates new version, optimistic concurrency)
+      description: |
+        `If-Match: <current_version>` header is REQUIRED. Mismatch →
+        `409 VERSION_CONFLICT`. Successful PATCH produces `current_version + 1`
+        and snapshots the full payload into `agent_definition_versions`.
+
+        Empty bodies are rejected (must modify at least one editable field).
+      operationId: patchAgentDefinition
+      parameters:
+        - $ref: '#/components/parameters/IfMatchHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchAgentDefinitionRequest'
+      responses:
+        '200':
+          description: Patched. Response contains the new current-version snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatchAgentDefinitionResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/VersionConflict' }
+
+  /api/v1/agent-definitions/{id}/versions:
+    parameters:
+      - $ref: '#/components/parameters/ResourceIdPath'
+    get:
+      tags: [AgentDefinition]
+      summary: List AgentDefinition version history (lightweight)
+      description: |
+        Returns version summaries (no full snapshot). To fetch a specific
+        snapshot, call `GET /api/v1/agent-definitions/{id}?version=N`.
+      operationId: listAgentDefinitionVersions
+      parameters:
+        - $ref: '#/components/parameters/LimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAgentDefinitionVersionsResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/agent-definitions/{id}/archive:
+    parameters:
+      - $ref: '#/components/parameters/ResourceIdPath'
+    post:
+      tags: [AgentDefinition]
+      summary: Archive an AgentDefinition
+      description: |
+        Sets `archivedAt`. Existing Agents bound to this definition keep
+        running, but new Agents cannot be created against an archived
+        definition. Archive is idempotent.
+      operationId: archiveAgentDefinition
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArchiveAgentDefinitionResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------------------
+  # Agent (4)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/agents:
+    post:
+      tags: [Agent]
+      summary: Create an Agent (and optionally its first Run)
+      description: |
+        Creates an Agent (an instance of an AgentDefinition@version). If
+        `initialInput` is provided, a first Run is created synchronously and
+        its id is returned in `data.firstRunId`.
+
+        If `definitionVersion` is omitted, the AgentDefinition's
+        `currentVersion` is frozen into the Agent (snapshot-bound).
+      operationId: createAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAgentRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAgentResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    get:
+      tags: [Agent]
+      summary: List Agents
+      operationId: listAgents
+      parameters:
+        - $ref: '#/components/parameters/LimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+        - name: projectId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/AgentStatus'
+        - name: definitionId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListAgentsResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/agents/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceIdPath'
+    get:
+      tags: [Agent]
+      summary: Get Agent by id
+      operationId: getAgent
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAgentResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Agent]
+      summary: Cancel (soft-delete) an Agent
+      description: |
+        Transitions Agent `status` → `cancelled`. If an active Run exists, it
+        is cancelled and its id is echoed in `data.cancelledRunId`. The row
+        is retained for audit.
+      operationId: deleteAgent
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteAgentResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------------------
+  # Run (5)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/agents/{agentId}/runs:
+    parameters:
+      - name: agentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Run]
+      summary: Create a Run (idempotency-keyed)
+      description: |
+        Starts a Run on the given Agent. Accepts the optional
+        `Idempotency-Key` header (URL-safe ASCII, ≤160 chars). Semantics:
+
+        - Within 24h, same key + same canonical body hash → original run replayed
+          (same 201 response).
+        - Within 24h, same key + different body → `409 IDEMPOTENCY_CONFLICT`.
+        - Different key, or outside 24h window → new run.
+
+        Returns `409 VERSION_CONFLICT` if the Agent is in a terminal state
+        (`completed` / `cancelled`).
+      operationId: createRun
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRunRequest'
+      responses:
+        '201':
+          description: Created (or replayed if Idempotency-Key matched).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateRunResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Agent in terminal state OR Idempotency-Key conflict.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags: [Run]
+      summary: List Runs for an Agent
+      operationId: listRuns
+      parameters:
+        - $ref: '#/components/parameters/LimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/WireRunStatus'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListRunsResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/agents/{agentId}/runs/{runId}:
+    parameters:
+      - name: agentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: runId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Run]
+      summary: Get Run by id
+      operationId: getRun
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetRunResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/agents/{agentId}/runs/{runId}/cancel:
+    parameters:
+      - name: agentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: runId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Run]
+      summary: Cancel a Run
+      description: |
+        Virtual `cancelled` wire status (see `WireRunStatus`). Internally the
+        Run transitions to `failed` with `errorMessage='cancelled by user'`;
+        the route surfaces `status='cancelled'` on the wire for client
+        convenience.
+      operationId: cancelRun
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelRunResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/agents/{agentId}/runs/{runId}/events:
+    parameters:
+      - name: agentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: runId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Run]
+      summary: Stream Run events (Server-Sent Events)
+      description: |
+        SSE stream of `run_events` rows as they are written by the
+        single-writer control-worker pipeline. Every frame carries
+        `id: <seq>` (the monotonic per-run `run_events.seq`).
+
+        **Reconnection**: clients should resume with the standard SSE
+        `Last-Event-ID` header carrying the last received `seq` (protocol is
+        header-only; query cursor not supported, spec §断线重连). A missing
+        header is equivalent to "start from seq=1".
+
+        **Liveness**: for runs still in flight the server polls `run_events`
+        and emits new frames until the Run transitions to a terminal state,
+        then drains once more and closes the stream.
+
+        **Event payload** is one of:
+        - AI SDK 6 `UIMessageChunk` (`text-start` / `text-delta` / `text-end` /
+          `reasoning-*` / `tool-*` / `start` / `finish` / `error` / step markers)
+        - Open-rush extension (`data-openrush-run-started` /
+          `data-openrush-run-done` / `data-openrush-usage` /
+          `data-openrush-sub-run`)
+        - Generic `data-<key>` with opaque `data` payload.
+
+        See `components.schemas.RunEventPayload` for the full union.
+      operationId: streamRunEvents
+      parameters:
+        - name: Last-Event-ID
+          in: header
+          required: false
+          description: |
+            Monotonic per-run `seq` of the last successfully received event.
+            The server resumes with `seq > Last-Event-ID`. Integer ≥ 0.
+          schema: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: |
+            OK. `Content-Type: text/event-stream`. Each SSE frame has shape:
+
+            ```
+            id: <seq>
+            data: <RunEventPayload JSON>
+
+            ```
+          headers:
+            Content-Type:
+              description: Always `text/event-stream`.
+              schema: { type: string, enum: [text/event-stream] }
+            Cache-Control:
+              schema: { type: string, enum: [no-cache, no-transform] }
+            Connection:
+              schema: { type: string, enum: [keep-alive] }
+            X-Accel-Buffering:
+              description: Disables buffering for compatible proxies (e.g. nginx).
+              schema: { type: string, enum: [no] }
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/RunEventSseFrame'
+              examples:
+                textDelta:
+                  summary: Text streaming chunk
+                  value: "id: 42\ndata: {\"type\":\"text-delta\",\"id\":\"msg_1\",\"delta\":\"好的\"}\n\n"
+                toolInputAvailable:
+                  summary: Tool input ready
+                  value: "id: 43\ndata: {\"type\":\"tool-input-available\",\"toolCallId\":\"call_1\",\"toolName\":\"Read\",\"input\":{\"path\":\"/a\"}}\n\n"
+                runDone:
+                  summary: Open-rush extension end-marker
+                  value: "id: 45\ndata: {\"type\":\"data-openrush-run-done\",\"data\":{\"status\":\"success\"}}\n\n"
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------------------
+  # Vault (3)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/vaults/entries:
+    post:
+      tags: [Vault]
+      summary: Create a Vault entry (plaintext → encrypted at rest)
+      description: |
+        Server encrypts the plaintext `value` before storage. `encryptedValue`
+        is NEVER echoed back on any endpoint (including this create
+        response). Runtime (task-10/11) injects decrypted values into the
+        sandbox via the configured `injectionTarget` env-var.
+
+        Scope rules:
+        - `scope='platform'` → `projectId` MUST be absent/null.
+        - `scope='project'` → `projectId` REQUIRED.
+      operationId: createVaultEntry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVaultEntryRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateVaultEntryResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    get:
+      tags: [Vault]
+      summary: List Vault entries (no plaintext / no ciphertext)
+      operationId: listVaultEntries
+      parameters:
+        - $ref: '#/components/parameters/LimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+        - name: scope
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/VaultScope'
+        - name: projectId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListVaultEntriesResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/vaults/entries/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceIdPath'
+    delete:
+      tags: [Vault]
+      summary: Delete a Vault entry
+      operationId: deleteVaultEntry
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteVaultEntryResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------------------------------------------------------------------------
+  # Registry (2, read-only) - spec §与 Web UI 关系: install/star/members stay on /api/*.
+  # ---------------------------------------------------------------------------
+
+  /api/v1/skills:
+    get:
+      tags: [Registry]
+      summary: List Skills (read-only)
+      description: |
+        Returns the publicly visible Skills available for AgentDefinition
+        authoring. Install / star / upload flows are Web-UI-private and do
+        NOT live under `/api/v1/`.
+      operationId: listSkills
+      parameters:
+        - $ref: '#/components/parameters/LimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+        - name: q
+          in: query
+          required: false
+          description: Full-text search query.
+          schema: { type: string }
+        - name: category
+          in: query
+          required: false
+          schema: { type: string }
+        - name: visibility
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/SkillVisibility'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListSkillsResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/mcps:
+    get:
+      tags: [Registry]
+      summary: List MCP server registry entries (read-only)
+      operationId: listMcps
+      parameters:
+        - $ref: '#/components/parameters/LimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+        - name: q
+          in: query
+          required: false
+          schema: { type: string }
+        - name: category
+          in: query
+          required: false
+          schema: { type: string }
+        - name: transportType
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/McpTransport'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListMcpsResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------------------------------------------------------------------------
+  # Project (3)
+  # ---------------------------------------------------------------------------
+
+  /api/v1/projects:
+    post:
+      tags: [Project]
+      summary: Create a Project
+      operationId: createProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateProjectResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    get:
+      tags: [Project]
+      summary: List Projects
+      operationId: listProjects
+      parameters:
+        - $ref: '#/components/parameters/LimitQuery'
+        - $ref: '#/components/parameters/CursorQuery'
+        - name: q
+          in: query
+          required: false
+          description: Full-text search across name / description.
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListProjectsResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/projects/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceIdPath'
+    get:
+      tags: [Project]
+      summary: Get Project by id
+      operationId: getProject
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetProjectResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  # ---------------------------------------------------------------------------
+  # Security schemes
+  # ---------------------------------------------------------------------------
+  securitySchemes:
+    serviceToken:
+      type: http
+      scheme: bearer
+      bearerFormat: sk_<base64url>
+      description: |
+        `Authorization: Bearer sk_<token>` — Service Token issued via
+        `POST /api/v1/auth/tokens`. See `specs/service-token-auth.md`.
+        Scope is enforced per-endpoint (see `x-required-scope` vendor
+        extension on each operation where defined).
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: next-auth.session-token
+      description: |
+        NextAuth session cookie. Used by the Web UI and for administrative
+        endpoints that disallow Service Tokens (e.g.
+        `POST /api/v1/auth/tokens`).
+
+  # ---------------------------------------------------------------------------
+  # Reusable parameters
+  # ---------------------------------------------------------------------------
+  parameters:
+    ResourceIdPath:
+      name: id
+      in: path
+      required: true
+      description: Resource identifier (UUID).
+      schema: { type: string, format: uuid }
+
+    LimitQuery:
+      name: limit
+      in: query
+      required: false
+      description: Page size (1..200, default 50).
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+
+    CursorQuery:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque pagination cursor from a prior response's `nextCursor`.
+      schema: { type: string }
+
+    IfMatchHeader:
+      name: If-Match
+      in: header
+      required: true
+      description: |
+        Current version of the AgentDefinition as returned by the last GET.
+        Mismatch → `409 VERSION_CONFLICT`.
+      schema:
+        type: integer
+        minimum: 1
+
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Optional client-generated key (URL-safe ASCII `[A-Za-z0-9_-]+`, max
+        160 chars). Enables 24h idempotent replay of `POST /runs`. UUIDv4
+        is recommended.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 160
+        pattern: '^[A-Za-z0-9_-]+$'
+
+  # ---------------------------------------------------------------------------
+  # Reusable responses
+  # ---------------------------------------------------------------------------
+  responses:
+    Unauthorized:
+      description: Missing / invalid / revoked / expired auth credential.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Authentication required
+
+    Forbidden:
+      description: Auth recognised but caller lacks required scope OR project membership.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error:
+              code: FORBIDDEN
+              message: Missing scope agents:write
+
+    NotFound:
+      description: Resource not found (or not visible to the caller).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error:
+              code: NOT_FOUND
+              message: AgentDefinition not found
+
+    ValidationError:
+      description: Request body / query / header failed schema validation.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: invalid request body
+              issues:
+                - path: [scopes, 0]
+                  message: wildcard scope '*' is not allowed
+
+    VersionConflict:
+      description: Optimistic concurrency conflict (If-Match mismatch).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error:
+              code: VERSION_CONFLICT
+              message: Definition has been modified since your last read
+              hint: Fetch the latest version and retry
+
+    IdempotencyConflict:
+      description: Same Idempotency-Key re-used with a different request body within the 24h window.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error:
+              code: IDEMPOTENCY_CONFLICT
+              message: Idempotency-Key already used with a different body
+              hint: Generate a new key for this request
+
+    RateLimited:
+      description: Reserved; v0.1 does not implement rate limiting.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+    Internal:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  # ---------------------------------------------------------------------------
+  # Schemas
+  # ---------------------------------------------------------------------------
+  schemas:
+    # --- Error envelope ---
+    ErrorCode:
+      description: Stable error code enum (HTTP status paired 1:1 — see description).
+      type: string
+      enum:
+        - UNAUTHORIZED          # 401
+        - FORBIDDEN             # 403
+        - NOT_FOUND             # 404
+        - VALIDATION_ERROR      # 400
+        - VERSION_CONFLICT      # 409
+        - IDEMPOTENCY_CONFLICT  # 409
+        - RATE_LIMITED          # 429
+        - INTERNAL              # 500
+
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+          minLength: 1
+        hint:
+          type: string
+        issues:
+          type: array
+          items:
+            type: object
+            required: [path, message]
+            properties:
+              path:
+                type: array
+                items:
+                  oneOf:
+                    - type: string
+                    - type: integer
+              message: { type: string }
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+
+    # --- Pagination helpers ---
+    PaginationNextCursor:
+      type: string
+      nullable: true
+      description: Opaque cursor to fetch the next page, or null at end.
+
+    # --- Enums ---
+    ServiceTokenScope:
+      description: |
+        Per-endpoint scopes Service Tokens may declare. `'*'` is RESERVED
+        for session auth and explicitly rejected from Service Token
+        requests (spec §颁发流程 + §Scope 定义).
+      type: string
+      enum:
+        - agent-definitions:read
+        - agent-definitions:write
+        - agents:read
+        - agents:write
+        - runs:read
+        - runs:write
+        - runs:cancel
+        - vaults:read
+        - vaults:write
+        - projects:read
+        - projects:write
+
+    AgentStatus:
+      type: string
+      description: Agent (task-row) lifecycle status as surfaced on the wire.
+      enum: [active, completed, cancelled]
+
+    AgentDeliveryMode:
+      type: string
+      enum: [chat, workspace]
+
+    ConnectionMode:
+      type: string
+      enum: [anthropic, bedrock, custom]
+
+    TriggerSource:
+      type: string
+      enum: [user, webhook, api]
+
+    VaultScope:
+      type: string
+      enum: [platform, project]
+
+    CredentialType:
+      type: string
+      enum:
+        - env_var
+        - anthropic_api
+        - aws_bedrock
+        - custom_endpoint
+        - git_token
+        - npm_token
+        - http_bearer
+
+    SandboxProviderId:
+      type: string
+      enum: [opensandbox, e2b, docker, custom]
+
+    SkillVisibility:
+      type: string
+      enum: [public, private]
+
+    McpTransport:
+      type: string
+      enum: [stdio, http, sse]
+
+    RunStatus:
+      description: Internal 15-state run status.
+      type: string
+      enum:
+        - queued
+        - provisioning
+        - preparing
+        - running
+        - finalizing_prepare
+        - finalizing_uploading
+        - finalizing_verifying
+        - finalizing_metadata_commit
+        - finalized
+        - completed
+        - failed
+        - worker_unreachable
+        - finalizing_retryable_failed
+        - finalizing_timeout
+        - finalizing_manual_intervention
+
+    WireRunStatus:
+      description: |
+        Wire-level run status: the 15-state machine plus the virtual
+        `cancelled` value surfaced by `POST /runs/:runId/cancel` and
+        `DELETE /api/v1/agents/:id` (spec §E2E 3.5).
+      type: string
+      enum:
+        - queued
+        - provisioning
+        - preparing
+        - running
+        - finalizing_prepare
+        - finalizing_uploading
+        - finalizing_verifying
+        - finalizing_metadata_commit
+        - finalized
+        - completed
+        - failed
+        - worker_unreachable
+        - finalizing_retryable_failed
+        - finalizing_timeout
+        - finalizing_manual_intervention
+        - cancelled
+
+    # --- Auth ---
+    CreateTokenRequest:
+      type: object
+      required: [name, scopes, expiresAt]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        scopes:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ServiceTokenScope'
+        expiresAt:
+          type: string
+          format: date-time
+          description: RFC 3339 timestamp. Must be strictly in the future AND within now + 90d.
+
+    CreatedToken:
+      type: object
+      required: [id, token, name, scopes, createdAt, expiresAt]
+      properties:
+        id: { type: string, format: uuid }
+        token:
+          type: string
+          pattern: '^sk_[A-Za-z0-9_-]+$'
+          description: Plaintext. Returned ONCE on creation; never again.
+        name: { type: string }
+        scopes:
+          type: array
+          items: { $ref: '#/components/schemas/ServiceTokenScope' }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+
+    CreateTokenResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/CreatedToken' }
+
+    TokenListItem:
+      type: object
+      required: [id, name, scopes, createdAt, expiresAt, lastUsedAt, revokedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        scopes:
+          type: array
+          items: { $ref: '#/components/schemas/ServiceTokenScope' }
+        createdAt: { type: string, format: date-time }
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    ListTokensResponse:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/TokenListItem' }
+        nextCursor:
+          $ref: '#/components/schemas/PaginationNextCursor'
+
+    DeletedToken:
+      type: object
+      required: [id, revokedAt]
+      properties:
+        id: { type: string, format: uuid }
+        revokedAt: { type: string, format: date-time }
+
+    DeleteTokenResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/DeletedToken' }
+
+    # --- AgentDefinition ---
+    AgentDefinitionEditable:
+      description: The subset of fields a POST or PATCH body may set.
+      type: object
+      required:
+        - name
+        - providerType
+        - allowedTools
+        - skills
+        - mcpServers
+        - maxSteps
+        - deliveryMode
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          nullable: true
+        icon:
+          type: string
+          maxLength: 50
+          nullable: true
+        providerType:
+          type: string
+          minLength: 1
+          maxLength: 50
+        model:
+          type: string
+          maxLength: 255
+          nullable: true
+        systemPrompt:
+          type: string
+          nullable: true
+        appendSystemPrompt:
+          type: string
+          nullable: true
+        allowedTools:
+          type: array
+          items: { type: string }
+        skills:
+          type: array
+          items: { type: string }
+        mcpServers:
+          type: array
+          items: { type: string }
+        maxSteps:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        deliveryMode:
+          $ref: '#/components/schemas/AgentDeliveryMode'
+        config:
+          type: object
+          nullable: true
+          additionalProperties: true
+
+    AgentDefinition:
+      allOf:
+        - $ref: '#/components/schemas/AgentDefinitionEditable'
+        - type: object
+          required:
+            - id
+            - projectId
+            - currentVersion
+            - archivedAt
+            - createdAt
+            - updatedAt
+          properties:
+            id: { type: string, format: uuid }
+            projectId: { type: string, format: uuid }
+            currentVersion:
+              type: integer
+              minimum: 1
+            archivedAt:
+              type: string
+              format: date-time
+              nullable: true
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+
+    CreateAgentDefinitionRequest:
+      allOf:
+        - $ref: '#/components/schemas/AgentDefinitionEditable'
+        - type: object
+          required: [projectId]
+          properties:
+            projectId: { type: string, format: uuid }
+            changeNote:
+              type: string
+              maxLength: 1000
+
+    CreateAgentDefinitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/AgentDefinition' }
+
+    ListAgentDefinitionsResponse:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/AgentDefinition' }
+        nextCursor: { $ref: '#/components/schemas/PaginationNextCursor' }
+
+    GetAgentDefinitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/AgentDefinition' }
+
+    PatchAgentDefinitionRequest:
+      description: |
+        All fields optional, but body must contain at least one editable
+        field (empty-body PATCHes are rejected). `changeNote` alone is not
+        sufficient.
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          nullable: true
+        icon:
+          type: string
+          maxLength: 50
+          nullable: true
+        providerType:
+          type: string
+          minLength: 1
+          maxLength: 50
+        model:
+          type: string
+          maxLength: 255
+          nullable: true
+        systemPrompt:
+          type: string
+          nullable: true
+        appendSystemPrompt:
+          type: string
+          nullable: true
+        allowedTools:
+          type: array
+          items: { type: string }
+        skills:
+          type: array
+          items: { type: string }
+        mcpServers:
+          type: array
+          items: { type: string }
+        maxSteps:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        deliveryMode:
+          $ref: '#/components/schemas/AgentDeliveryMode'
+        config:
+          type: object
+          nullable: true
+          additionalProperties: true
+        changeNote:
+          type: string
+          maxLength: 1000
+
+    PatchAgentDefinitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/AgentDefinition' }
+
+    AgentDefinitionVersionSummary:
+      type: object
+      required: [version, changeNote, createdBy, createdAt]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        changeNote:
+          type: string
+          nullable: true
+        createdBy:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    ListAgentDefinitionVersionsResponse:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/AgentDefinitionVersionSummary' }
+        nextCursor: { $ref: '#/components/schemas/PaginationNextCursor' }
+
+    ArchiveAgentDefinitionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [id, archivedAt]
+          properties:
+            id: { type: string, format: uuid }
+            archivedAt: { type: string, format: date-time }
+
+    # --- Agent ---
+    Agent:
+      type: object
+      required:
+        - id
+        - projectId
+        - definitionId
+        - definitionVersion
+        - mode
+        - status
+        - title
+        - headRunId
+        - activeRunId
+        - createdBy
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        definitionId: { type: string, format: uuid }
+        definitionVersion:
+          type: integer
+          minimum: 1
+          description: Snapshot of the AgentDefinition version this Agent is bound to.
+        mode: { $ref: '#/components/schemas/AgentDeliveryMode' }
+        status: { $ref: '#/components/schemas/AgentStatus' }
+        title:
+          type: string
+          nullable: true
+        headRunId:
+          type: string
+          format: uuid
+          nullable: true
+        activeRunId:
+          type: string
+          format: uuid
+          nullable: true
+        createdBy:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateAgentRequest:
+      type: object
+      required: [definitionId, projectId, mode]
+      properties:
+        definitionId: { type: string, format: uuid }
+        definitionVersion:
+          type: integer
+          minimum: 1
+          description: Optional. Defaults to the AgentDefinition's current version.
+        projectId: { type: string, format: uuid }
+        mode: { $ref: '#/components/schemas/AgentDeliveryMode' }
+        title:
+          type: string
+          maxLength: 200
+        initialInput:
+          type: string
+          description: |
+            If present, a first Run is synchronously created with this prompt
+            and its id is returned in `data.firstRunId`.
+
+    CreateAgentResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [agent, firstRunId]
+          properties:
+            agent: { $ref: '#/components/schemas/Agent' }
+            firstRunId:
+              type: string
+              format: uuid
+              nullable: true
+
+    ListAgentsResponse:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Agent' }
+        nextCursor: { $ref: '#/components/schemas/PaginationNextCursor' }
+
+    GetAgentResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Agent' }
+
+    DeleteAgentResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [id, status, cancelledRunId]
+          properties:
+            id: { type: string, format: uuid }
+            status:
+              type: string
+              enum: [cancelled]
+            cancelledRunId:
+              type: string
+              format: uuid
+              nullable: true
+
+    # --- Run ---
+    Run:
+      type: object
+      required:
+        - id
+        - agentId
+        - taskId
+        - conversationId
+        - parentRunId
+        - status
+        - prompt
+        - provider
+        - connectionMode
+        - modelId
+        - triggerSource
+        - agentDefinitionVersion
+        - retryCount
+        - maxRetries
+        - errorMessage
+        - createdAt
+        - updatedAt
+        - startedAt
+        - completedAt
+      properties:
+        id: { type: string, format: uuid }
+        agentId: { type: string, format: uuid }
+        taskId:
+          type: string
+          format: uuid
+          nullable: true
+        conversationId:
+          type: string
+          format: uuid
+          nullable: true
+        parentRunId:
+          type: string
+          format: uuid
+          nullable: true
+        status: { $ref: '#/components/schemas/WireRunStatus' }
+        prompt: { type: string }
+        provider: { type: string }
+        connectionMode: { $ref: '#/components/schemas/ConnectionMode' }
+        modelId:
+          type: string
+          nullable: true
+        triggerSource: { $ref: '#/components/schemas/TriggerSource' }
+        agentDefinitionVersion:
+          type: integer
+          minimum: 1
+          nullable: true
+        retryCount:
+          type: integer
+          minimum: 0
+        maxRetries:
+          type: integer
+          minimum: 0
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreateRunRequest:
+      type: object
+      required: [input]
+      properties:
+        input:
+          type: string
+          minLength: 1
+        attachments:
+          type: array
+          items:
+            type: object
+            required: [name]
+            properties:
+              name: { type: string }
+              url:
+                type: string
+                format: uri
+              mimeType: { type: string }
+        parentRunId:
+          type: string
+          format: uuid
+        modelId:
+          type: string
+
+    CreateRunResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Run' }
+
+    ListRunsResponse:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Run' }
+        nextCursor: { $ref: '#/components/schemas/PaginationNextCursor' }
+
+    GetRunResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Run' }
+
+    CancelRunResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Run' }
+
+    # --- Run event payload (AI SDK UIMessageChunk ∪ Open-rush extensions) ---
+    RunEventPayload:
+      description: |
+        Discriminated on `type`. Conforms to AI SDK UIMessageChunk plus
+        Open-rush `data-openrush-*` extensions. Generic `data-<key>` with
+        opaque payload is also permitted (but `data-openrush-*` keys are
+        reserved for the well-known extensions below).
+      oneOf:
+        # AI SDK text
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [text-start] }
+            id: { type: string }
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [text-delta] }
+            id: { type: string }
+            delta: { type: string }
+            content: { type: string }
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [text-end] }
+            id: { type: string }
+        # AI SDK reasoning
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [reasoning-start] }
+            id: { type: string }
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [reasoning-delta] }
+            id: { type: string }
+            delta: { type: string }
+            content: { type: string }
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [reasoning-end] }
+            id: { type: string }
+        # AI SDK tool lifecycle
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [tool-input-start] }
+            toolCallId: { type: string }
+            toolName: { type: string }
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [tool-input-delta] }
+            toolCallId: { type: string }
+            delta: { type: string }
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [tool-input-available] }
+            toolCallId: { type: string }
+            toolName: { type: string }
+            input: {}
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [tool-output-available] }
+            toolCallId: { type: string }
+            output: {}
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [tool-output-error] }
+            toolCallId: { type: string }
+            errorText: { type: string }
+        # AI SDK stream / step markers
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [start] }
+            messageId: { type: string }
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [finish] }
+            reason: { type: string }
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [error] }
+            errorText: { type: string }
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [start-step] }
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [finish-step] }
+            reason: { type: string }
+        # Open-rush extensions
+        - $ref: '#/components/schemas/OpenrushRunStartedPart'
+        - $ref: '#/components/schemas/OpenrushRunDonePart'
+        - $ref: '#/components/schemas/OpenrushUsagePart'
+        - $ref: '#/components/schemas/OpenrushSubRunPart'
+        # Generic non-openrush data-* payload
+        - type: object
+          required: [type, data]
+          properties:
+            type:
+              type: string
+              pattern: '^data-(?!openrush-)[A-Za-z0-9_-]+$'
+            id: { type: string }
+            data: {}
+
+    OpenrushRunStartedPart:
+      type: object
+      required: [type, data]
+      properties:
+        type:
+          type: string
+          enum: [data-openrush-run-started]
+        id: { type: string }
+        data:
+          type: object
+          required: [runId, agentId, definitionVersion]
+          properties:
+            runId: { type: string, format: uuid }
+            agentId: { type: string, format: uuid }
+            definitionVersion:
+              type: integer
+              minimum: 1
+
+    OpenrushRunDonePart:
+      type: object
+      required: [type, data]
+      properties:
+        type:
+          type: string
+          enum: [data-openrush-run-done]
+        id: { type: string }
+        data:
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [success, failed, cancelled]
+            error: { type: string }
+
+    OpenrushUsagePart:
+      type: object
+      required: [type, data]
+      properties:
+        type:
+          type: string
+          enum: [data-openrush-usage]
+        id: { type: string }
+        data:
+          type: object
+          required: [tokensIn, tokensOut, costUsd]
+          properties:
+            tokensIn:
+              type: integer
+              minimum: 0
+            tokensOut:
+              type: integer
+              minimum: 0
+            costUsd:
+              type: number
+              minimum: 0
+
+    OpenrushSubRunPart:
+      type: object
+      required: [type, data]
+      properties:
+        type:
+          type: string
+          enum: [data-openrush-sub-run]
+        id: { type: string }
+        data:
+          type: object
+          required: [parentRunId, childRunId]
+          properties:
+            parentRunId: { type: string, format: uuid }
+            childRunId: { type: string, format: uuid }
+
+    RunEventSseFrame:
+      description: |
+        Wire representation of a single SSE frame. The HTTP body on the wire
+        is the raw `id: <seq>\\ndata: <json>\\n\\n` text, NOT this JSON object
+        — we expose the fields as a schema for consumers inspecting a parsed
+        frame (e.g. in test fixtures).
+      type: object
+      required: [id, data]
+      properties:
+        id:
+          type: integer
+          minimum: 1
+          description: Monotonic per-run `run_events.seq`.
+        data: { $ref: '#/components/schemas/RunEventPayload' }
+
+    # --- Vault ---
+    VaultEntry:
+      type: object
+      required:
+        - id
+        - scope
+        - projectId
+        - ownerId
+        - name
+        - credentialType
+        - keyVersion
+        - injectionTarget
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: string, format: uuid }
+        scope: { $ref: '#/components/schemas/VaultScope' }
+        projectId:
+          type: string
+          format: uuid
+          nullable: true
+        ownerId:
+          type: string
+          format: uuid
+          nullable: true
+        name: { type: string }
+        credentialType: { $ref: '#/components/schemas/CredentialType' }
+        keyVersion:
+          type: integer
+          minimum: 1
+        injectionTarget:
+          type: string
+          nullable: true
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateVaultEntryRequest:
+      type: object
+      required: [scope, name, credentialType, value]
+      properties:
+        scope: { $ref: '#/components/schemas/VaultScope' }
+        projectId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        credentialType: { $ref: '#/components/schemas/CredentialType' }
+        value:
+          type: string
+          minLength: 1
+          description: Plaintext. Server encrypts before storage and never returns this field.
+        injectionTarget:
+          type: string
+          maxLength: 255
+
+    CreateVaultEntryResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/VaultEntry' }
+
+    ListVaultEntriesResponse:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/VaultEntry' }
+        nextCursor: { $ref: '#/components/schemas/PaginationNextCursor' }
+
+    DeleteVaultEntryResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [id]
+          properties:
+            id: { type: string, format: uuid }
+
+    # --- Registry ---
+    Skill:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - sourceType
+        - sourceUrl
+        - category
+        - tags
+        - visibility
+        - latestVersion
+        - starCount
+        - installCount
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        sourceType:
+          type: string
+          enum: [registry, inline]
+        sourceUrl:
+          type: string
+          format: uri
+          nullable: true
+        category:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items: { type: string }
+        visibility: { $ref: '#/components/schemas/SkillVisibility' }
+        latestVersion:
+          type: string
+          nullable: true
+        starCount:
+          type: integer
+          minimum: 0
+        installCount:
+          type: integer
+          minimum: 0
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ListSkillsResponse:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Skill' }
+        nextCursor: { $ref: '#/components/schemas/PaginationNextCursor' }
+
+    McpRegistryEntry:
+      type: object
+      required:
+        - id
+        - name
+        - displayName
+        - description
+        - transportType
+        - tools
+        - tags
+        - category
+        - author
+        - docUrl
+        - repoUrl
+        - starCount
+        - isBuiltin
+        - visibility
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        displayName: { type: string }
+        description: { type: string }
+        transportType: { $ref: '#/components/schemas/McpTransport' }
+        tools:
+          type: array
+          items: {}
+        tags:
+          type: array
+          items: { type: string }
+        category:
+          type: string
+          nullable: true
+        author:
+          type: string
+          nullable: true
+        docUrl:
+          type: string
+          format: uri
+          nullable: true
+        repoUrl:
+          type: string
+          format: uri
+          nullable: true
+        starCount:
+          type: integer
+          minimum: 0
+        isBuiltin: { type: boolean }
+        visibility:
+          type: string
+          enum: [public, private]
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ListMcpsResponse:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/McpRegistryEntry' }
+        nextCursor: { $ref: '#/components/schemas/PaginationNextCursor' }
+
+    # --- Project ---
+    Project:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - sandboxProvider
+        - defaultModel
+        - defaultConnectionMode
+        - createdBy
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description:
+          type: string
+          nullable: true
+        sandboxProvider: { $ref: '#/components/schemas/SandboxProviderId' }
+        defaultModel:
+          type: string
+          nullable: true
+        defaultConnectionMode:
+          allOf:
+            - $ref: '#/components/schemas/ConnectionMode'
+          nullable: true
+        createdBy:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateProjectRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 2000
+        sandboxProvider:
+          allOf:
+            - $ref: '#/components/schemas/SandboxProviderId'
+          default: opensandbox
+        defaultModel:
+          type: string
+        defaultConnectionMode:
+          $ref: '#/components/schemas/ConnectionMode'
+
+    CreateProjectResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Project' }
+
+    ListProjectsResponse:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Project' }
+        nextCursor: { $ref: '#/components/schemas/PaginationNextCursor' }
+
+    GetProjectResponse:
+      type: object
+      required: [data]
+      properties:
+        data: { $ref: '#/components/schemas/Project' }

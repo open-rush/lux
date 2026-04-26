@@ -35,5 +35,8 @@ jobs:
       - name: Type check
         run: pnpm check
 
+      - name: Validate OpenAPI spec
+        run: pnpm validate:openapi
+
       - name: Test
         run: pnpm test

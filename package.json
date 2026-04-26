@@ -24,6 +24,7 @@
     "db:generate": "pnpm --filter @open-rush/db db:generate",
     "db:studio": "DATABASE_URL=postgresql://rush:rush@localhost:5432/rush pnpm --filter @open-rush/db db:studio",
     "test:integration": "turbo test:integration",
+    "validate:openapi": "node --experimental-strip-types --no-warnings=ExperimentalWarning scripts/validate-openapi.ts",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -38,7 +39,9 @@
     "@biomejs/biome": "2.4.11",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
+    "tsx": "^4.21.0",
     "turbo": "^2.5.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "yaml": "^2.8.3"
   }
 }

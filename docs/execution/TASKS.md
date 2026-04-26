@@ -180,7 +180,7 @@ Source of truth 见 `.claude/plans/managed-agents-p0-p1.md`。本文件仅用于
 
 ## M4: SDK + Docs + Frontend
 
-- [ ] `task-15-openapi-spec` — **Agent-C**
+- [x] `task-15-openapi-spec` — **Agent-C**
       域: `docs/specs/openapi-v0.1.yaml`, `scripts/validate-openapi.ts`, `package.json` script
       依赖: task-4 + 所有 v1 API
       验收:

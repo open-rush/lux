@@ -65,10 +65,87 @@ Track: M4 API-docs chain (task-15 OpenAPI + task-16 TypeScript SDK).
 
 - **Next**: commit + PR (Closes #130), hand off to task-16.
 
-## task-16 — planned
+## task-16 — TypeScript SDK `@open-rush/sdk`
 
-- Implement after task-15 merges.
-- Strategy: thin HTTP client in `packages/sdk`, re-export
-  `@open-rush/contracts/v1` types (no codegen). SSE client mirrors the
-  task-14 route: `EventSource`-like fetch loop with `Last-Event-ID`
-  reconnect; expose `createAgent` / `createRun` / `streamEvents` etc.
+- **Branch**: `feat/task-16` (worktree `/tmp/agent-wt/c1`, off `feat/task-15`;
+  rebases onto main once #158 merges).
+- **Files delivered** (new package):
+  - `packages/sdk/package.json` — workspace dep on `@open-rush/contracts`,
+    dual ESM+CJS output via tsup, vitest test runner.
+  - `packages/sdk/src/index.ts` — barrel re-exports `OpenRushClient`,
+    `OpenRushApiError`, SSE helpers, and the `v1` namespace.
+  - `packages/sdk/src/http.ts` — `performRequest` / `performStreamRequest`
+    (thin transport: Bearer token, JSON envelope, 204 handling, error
+    envelope parsing). No retry, no caching, no pagination helper.
+  - `packages/sdk/src/errors.ts` — `OpenRushApiError` with stable `code`
+    discriminant (8 values from contracts v1).
+  - `packages/sdk/src/sse.ts` — `streamEvents` async generator with
+    `Last-Event-ID` reconnect + configurable back-off + abort support.
+    Mirrors task-14 server semantics (spec §断线重连). Zero runtime
+    dependency (pure `fetch` + `ReadableStream` + `TextDecoder`).
+  - `packages/sdk/src/client.ts` — `OpenRushClient` with 8 resource
+    namespaces (`authTokens`, `agentDefinitions`, `agents`, `runs`,
+    `vaults`, `skills`, `mcps`, `projects`) + top-level `streamEvents`.
+    All types pulled from `@open-rush/contracts` via `Partial<>` wrappers
+    for defaulted query schemas (limit/includeArchived).
+  - `packages/sdk/src/__tests__/http.test.ts` — 19 vitest cases (URL
+    build, headers, body serialization, 204, defaults merge, abort,
+    error envelope parsing, stream transport, global fetch fallback).
+  - `packages/sdk/src/__tests__/client.test.ts` — 22 cases covering
+    every resource method's HTTP method / path / headers / body. Asserts
+    `If-Match` on PATCH definitions, optional `Idempotency-Key` on
+    `runs.create`, Authorization bypass when no token.
+  - `packages/sdk/src/__tests__/sse.test.ts` — 20 cases: `parseSseFrame`
+    happy + malformed, terminal run EOF after `data-openrush-run-done`,
+    reconnect with `Last-Event-ID`, policy returning false, client-side
+    dedup of `seq <= lastEventId`, abort mid-stream.
+  - `packages/sdk/README.md` — quickstart + API reference + idempotency
+    / concurrency / reconnect / errors sections.
+
+- **Design decisions**
+  - Thin HTTP client, **no codegen from OpenAPI**. Contracts are the
+    single source of truth; OpenAPI is a derived artefact. Generating
+    from YAML would introduce silent drift if somebody edits contracts
+    without regenerating.
+  - **No runtime Zod validation on hot path** — re-validating every SSE
+    frame would cost 1-2 ms/frame. Server is the single writer and has
+    its own invariants; the SDK simply `as`-casts to `v1.RunEventPayload`.
+    Callers wanting validation can `v1.runEventPayloadSchema.parse(ev.data)`.
+  - **Optimistic-concurrency discipline**: `agentDefinitions.patch()`
+    takes `ifMatchVersion` as a **positional** argument (not optional),
+    making it impossible to forget the `If-Match` header.
+  - **Idempotency-Key as an explicit option object** — `runs.create(agentId,
+    body, { idempotencyKey })`. Separates it from body schema (contract)
+    and makes it visible in IDE autocomplete.
+  - **Partial<Query> for list methods** — contracts' `paginationQuerySchema`
+    has `limit: z.coerce.number().default(50)` which infers `limit: number`
+    (required in output type). Using `Partial<>` on the SDK surface lets
+    callers call `list()` with zero args.
+  - **Custom fetch injection** — `fetch?: FetchLike` in
+    `OpenRushClientOptions`. Tests use it exclusively (no global stubbing);
+    Node < 18 users can pass node-fetch.
+  - **streamEvents is an AsyncGenerator** — matches `for-await-of`
+    ergonomics; abort is supported via `AbortSignal`; reconnect policy is
+    caller-overridable.
+
+- **Green**: `pnpm build && pnpm check && pnpm lint && pnpm test` all
+  pass (35 workspace tasks, 62 SDK tests).
+  `./docs/execution/verify.sh task-16` → `[PASS]`.
+
+- **Sparring rounds** (Codex `gpt-5.3-codex-xhigh`):
+  - R1: CONCERNS — 1 MUST-FIX + 2 SHOULD-FIX.
+    - MUST-FIX: `streamEvents()` could enter a ~15 s reconnect back-off
+      chain when a caller resumed with `lastEventId = <last seq>` of an
+      already-terminal run (server drains nothing, closes — SDK misread
+      EOF as "mid-run disconnect"). Fixed by treating zero-event EOF as
+      terminal exit (matches task-14 `initialIsTerminal` branch).
+    - SHOULD-FIX: README same-origin example had `baseUrl: ''` which
+      throws at construct time — switched to `window.location.origin`.
+    - SHOULD-FIX: `onReconnect` returning `false` had asymmetric
+      semantics (EOF = graceful exit, error = rethrow). Documented the
+      distinction in JSDoc + README.
+  - R2: APPROVE (no regressions; zero-event-EOF rule noted as a
+    server-contract assumption that task-18 E2E implicitly guards).
+
+- **Next**: commit + PR (Closes #131). SDK branch is based on
+  `feat/task-15`; once #158 merges, rebase onto main.

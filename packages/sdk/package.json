@@ -1,0 +1,34 @@
+{
+  "name": "@open-rush/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TypeScript SDK for Open-rush /api/v1/* Managed Agents API.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "check": "tsc --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "clean": "rm -rf dist node_modules coverage"
+  },
+  "dependencies": {
+    "@open-rush/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.0.0"
+  }
+}

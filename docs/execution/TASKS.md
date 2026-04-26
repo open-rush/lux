@@ -189,7 +189,7 @@ Source of truth 见 `.claude/plans/managed-agents-p0-p1.md`。本文件仅用于
       - 可 import Swagger UI / Postman
       - verify: `./docs/execution/verify.sh task-15`
 
-- [ ] `task-16-typescript-sdk` — **Agent-C**
+- [x] `task-16-typescript-sdk` — **Agent-C**
       域: `packages/sdk/*`(新包 `@open-rush/sdk`)
       依赖: task-4, task-15
       验收:

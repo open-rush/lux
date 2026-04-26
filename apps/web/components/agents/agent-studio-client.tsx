@@ -228,19 +228,31 @@ export function AgentStudioClient({ projects }: AgentStudioClientProps) {
       try {
         // v1 migration: archive via POST /api/v1/agent-definitions/:id/archive,
         // then (if the archived agent was the project's current binding) rebind
-        // to another active definition. See lib/api/archive-agent.ts.
+        // to another non-archived definition. See lib/api/archive-agent.ts.
         await archiveAgentDefinition({
           projectId: selectedProjectId,
           agentId,
+          // v1 GET /api/v1/agent-definitions exposes `archivedAt`; filter by
+          // that rather than legacy `status` (which v1 does not return).
           candidates: agents.map((a) => ({
             id: a.id,
-            status: a.status,
+            archivedAt: (a as { archivedAt?: string | Date | null }).archivedAt ?? null,
           })),
         });
         setMessage('Agent deleted.');
         await load();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to delete agent');
+        const baseMsg = err instanceof Error ? err.message : 'Failed to delete agent';
+        // Partial failure: archive committed but rebind failed. Refresh so the
+        // user sees the archived row is gone and can "Set Current" on another.
+        if (baseMsg.includes('Archive succeeded but rebind failed')) {
+          setError(`${baseMsg}. Refresh the list and set another agent as Current.`);
+          await load().catch(() => {
+            /* If reload itself fails, leave the error message — user can retry. */
+          });
+        } else {
+          setError(baseMsg);
+        }
       } finally {
         setDeletingId(null);
       }

@@ -25,24 +25,24 @@ describe('archiveAgentDefinition', () => {
     vi.restoreAllMocks();
   });
 
-  it('archives and rebinds to next active agent when archived was current', async () => {
+  it('archives then rebinds to next non-archived candidate when still current', async () => {
     const PROJECT = 'p1';
     const ARCHIVED = 'a1';
     const NEXT = 'a2';
 
     const candidates: ArchiveCandidate[] = [
-      { id: ARCHIVED, archivedAt: null, status: 'active' },
-      { id: NEXT, archivedAt: null, status: 'active' },
-      { id: 'a3', archivedAt: new Date().toISOString(), status: 'active' },
+      { id: ARCHIVED, archivedAt: null },
+      { id: NEXT, archivedAt: null },
+      { id: 'a3', archivedAt: '2025-12-01T00:00:00Z' }, // previously archived; skip
     ];
 
-    // 1. GET current agent → returns a1 (== archived)
-    fetchMock.mockResolvedValueOnce(makeResponse({ data: { binding: { agentId: ARCHIVED } } }));
-    // 2. POST archive
+    // 1. POST archive
     fetchMock.mockResolvedValueOnce(
       makeResponse({ data: { id: ARCHIVED, archivedAt: '2026-01-01T00:00:00Z' } })
     );
-    // 3. PUT rebind
+    // 2. GET current (after archive) → still points at archived
+    fetchMock.mockResolvedValueOnce(makeResponse({ data: { binding: { agentId: ARCHIVED } } }));
+    // 3. PUT rebind to NEXT
     fetchMock.mockResolvedValueOnce(makeResponse({ data: {} }));
 
     const result = await archiveAgentDefinition({
@@ -54,64 +54,73 @@ describe('archiveAgentDefinition', () => {
     expect(result.archived.id).toBe(ARCHIVED);
     expect(result.rebound).toEqual({ nextAgentId: NEXT });
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(fetchMock.mock.calls[0][0]).toBe(`/api/projects/${PROJECT}/agent`);
-    expect(fetchMock.mock.calls[1][0]).toContain('/api/v1/agent-definitions/');
-    expect(fetchMock.mock.calls[1][0]).toContain('/archive');
+    // archive first
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/v1/agent-definitions/');
+    expect(fetchMock.mock.calls[0][0]).toContain('/archive');
+    // then GET current
+    expect(fetchMock.mock.calls[1][0]).toBe(`/api/projects/${PROJECT}/agent`);
+    // then PUT rebind
     expect(fetchMock.mock.calls[2][0]).toBe(`/api/projects/${PROJECT}/agent`);
     expect(fetchMock.mock.calls[2][1]).toMatchObject({ method: 'PUT' });
+    const rebindBody = JSON.parse((fetchMock.mock.calls[2][1] as { body: string }).body);
+    expect(rebindBody).toEqual({ agentId: NEXT });
   });
 
-  it('does not rebind when archived agent was NOT current', async () => {
+  it('does not rebind when the archived agent is no longer current (race)', async () => {
     const PROJECT = 'p1';
     const ARCHIVED = 'a1';
-    const CURRENT = 'a2';
+    const OTHER = 'a2';
 
-    fetchMock.mockResolvedValueOnce(makeResponse({ data: { binding: { agentId: CURRENT } } }));
     fetchMock.mockResolvedValueOnce(
       makeResponse({ data: { id: ARCHIVED, archivedAt: '2026-01-01T00:00:00Z' } })
     );
+    // GET current after archive → a concurrent actor already set a different
+    // current. We MUST NOT overwrite it.
+    fetchMock.mockResolvedValueOnce(makeResponse({ data: { binding: { agentId: OTHER } } }));
 
     const result = await archiveAgentDefinition({
       projectId: PROJECT,
       agentId: ARCHIVED,
       candidates: [
-        { id: ARCHIVED, archivedAt: null, status: 'active' },
-        { id: CURRENT, archivedAt: null, status: 'active' },
+        { id: ARCHIVED, archivedAt: null },
+        { id: OTHER, archivedAt: null },
       ],
     });
 
     expect(result.archived.id).toBe(ARCHIVED);
     expect(result.rebound).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2); // no PUT
   });
 
-  it('does not rebind when no replacement candidate exists', async () => {
+  it('clears binding (agentId: null) when no non-archived replacement exists', async () => {
     const PROJECT = 'p1';
     const ARCHIVED = 'a1';
 
-    fetchMock.mockResolvedValueOnce(makeResponse({ data: { binding: { agentId: ARCHIVED } } }));
     fetchMock.mockResolvedValueOnce(
       makeResponse({ data: { id: ARCHIVED, archivedAt: '2026-01-01T00:00:00Z' } })
     );
+    fetchMock.mockResolvedValueOnce(makeResponse({ data: { binding: { agentId: ARCHIVED } } }));
+    fetchMock.mockResolvedValueOnce(makeResponse({ data: { currentAgent: null, binding: null } }));
 
     const result = await archiveAgentDefinition({
       projectId: PROJECT,
       agentId: ARCHIVED,
       candidates: [
-        { id: ARCHIVED, archivedAt: null, status: 'active' },
-        { id: 'a3', archivedAt: '2025-12-01T00:00:00Z', status: 'active' },
+        { id: ARCHIVED, archivedAt: null },
+        { id: 'a3', archivedAt: '2025-12-01T00:00:00Z' },
       ],
     });
 
     expect(result.rebound).toEqual({ nextAgentId: null });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const rebindBody = JSON.parse((fetchMock.mock.calls[2][1] as { body: string }).body);
+    expect(rebindBody).toEqual({ agentId: null });
   });
 
-  it('throws when archive request fails (no rebind attempted)', async () => {
+  it('throws when archive fails (no current-check attempted)', async () => {
     const PROJECT = 'p1';
     const ARCHIVED = 'a1';
 
-    fetchMock.mockResolvedValueOnce(makeResponse({ data: { binding: { agentId: ARCHIVED } } }));
     fetchMock.mockResolvedValueOnce(
       makeResponse(
         { error: { code: 'FORBIDDEN', message: 'Missing scope' } },
@@ -124,24 +133,23 @@ describe('archiveAgentDefinition', () => {
         projectId: PROJECT,
         agentId: ARCHIVED,
         candidates: [
-          { id: ARCHIVED, archivedAt: null, status: 'active' },
-          { id: 'a2', archivedAt: null, status: 'active' },
+          { id: ARCHIVED, archivedAt: null },
+          { id: 'a2', archivedAt: null },
         ],
       })
     ).rejects.toThrow('Missing scope');
-    // Only GET current + failed POST archive — no PUT
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('throws when rebind fails (archive already committed)', async () => {
+  it('throws with descriptive message when rebind fails after archive', async () => {
     const PROJECT = 'p1';
     const ARCHIVED = 'a1';
     const NEXT = 'a2';
 
-    fetchMock.mockResolvedValueOnce(makeResponse({ data: { binding: { agentId: ARCHIVED } } }));
     fetchMock.mockResolvedValueOnce(
       makeResponse({ data: { id: ARCHIVED, archivedAt: '2026-01-01T00:00:00Z' } })
     );
+    fetchMock.mockResolvedValueOnce(makeResponse({ data: { binding: { agentId: ARCHIVED } } }));
     fetchMock.mockResolvedValueOnce(
       makeResponse(
         { error: { code: 'FORBIDDEN', message: 'No permission' } },
@@ -154,33 +162,61 @@ describe('archiveAgentDefinition', () => {
         projectId: PROJECT,
         agentId: ARCHIVED,
         candidates: [
-          { id: ARCHIVED, archivedAt: null, status: 'active' },
-          { id: NEXT, archivedAt: null, status: 'active' },
+          { id: ARCHIVED, archivedAt: null },
+          { id: NEXT, archivedAt: null },
         ],
       })
-    ).rejects.toThrow(/rebind failed/);
+    ).rejects.toThrow(/Archive succeeded but rebind failed/);
   });
 
-  it('falls through gracefully when current-agent GET errors', async () => {
+  it('treats unreachable GET current as "not current" (conservative: no PUT)', async () => {
     const PROJECT = 'p1';
     const ARCHIVED = 'a1';
 
-    fetchMock.mockResolvedValueOnce(makeResponse({ error: 'boom' }, { ok: false, status: 500 }));
     fetchMock.mockResolvedValueOnce(
       makeResponse({ data: { id: ARCHIVED, archivedAt: '2026-01-01T00:00:00Z' } })
     );
+    fetchMock.mockResolvedValueOnce(makeResponse({ error: 'boom' }, { ok: false, status: 500 }));
 
     const result = await archiveAgentDefinition({
       projectId: PROJECT,
       agentId: ARCHIVED,
       candidates: [
-        { id: ARCHIVED, archivedAt: null, status: 'active' },
-        { id: 'a2', archivedAt: null, status: 'active' },
+        { id: ARCHIVED, archivedAt: null },
+        { id: 'a2', archivedAt: null },
       ],
     });
 
-    // No rebind because we couldn't confirm the archived was current.
+    // GET current returned !ok → fetchCurrentAgentId returns null → null !==
+    // archived → skip rebind. Legacy safer than false rebinds.
     expect(result.rebound).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('filters candidates by archivedAt only (does not require status field)', async () => {
+    const PROJECT = 'p1';
+    const ARCHIVED = 'a1';
+    const NEXT_WITHOUT_STATUS = 'a2';
+
+    // Candidate list as returned by v1 GET /api/v1/agent-definitions —
+    // no `status` field. pickReplacement must accept this shape.
+    const candidates: ArchiveCandidate[] = [
+      { id: ARCHIVED, archivedAt: null },
+      { id: NEXT_WITHOUT_STATUS, archivedAt: null },
+    ];
+
+    fetchMock.mockResolvedValueOnce(
+      makeResponse({ data: { id: ARCHIVED, archivedAt: '2026-01-01T00:00:00Z' } })
+    );
+    fetchMock.mockResolvedValueOnce(makeResponse({ data: { binding: { agentId: ARCHIVED } } }));
+    fetchMock.mockResolvedValueOnce(makeResponse({ data: {} }));
+
+    const result = await archiveAgentDefinition({
+      projectId: PROJECT,
+      agentId: ARCHIVED,
+      candidates,
+    });
+
+    expect(result.rebound).toEqual({ nextAgentId: NEXT_WITHOUT_STATUS });
   });
 });
